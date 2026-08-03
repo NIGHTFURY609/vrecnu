@@ -19,8 +19,8 @@ Also read `ARCHITECTURE.md` for *what/why*. Order of reading: `ARCHITECTURE.md` 
 user's **own Google Drive** (not a proprietary cloud) and hands back a shareable link.
 Four invariants govern every decision: **lightweight, portable/no-install,
 bring-your-own-storage, privacy.** Delivery is phased: Phase 1 web app (PWA) → Phase 2
-portable Tauri `.exe` → Phase 3 full desktop editor. Do not build later-phase features into
-an earlier phase.
+portable **pure-Rust** `.exe` (see AGENTS.md ADR-001) → Phase 3 full desktop editor. Do not
+build later-phase features into an earlier phase.
 
 ## How to work in this repo (Claude specifics)
 
@@ -41,8 +41,8 @@ an earlier phase.
 ## Environment / MCP notes
 
 This workspace may expose extra MCP connectors (e.g. Supabase, n8n, browser automation).
-**vrecnu Phase 1–2 needs none of them** — it is a client-side PWA + Tauri app with no
-backend and no database. Do **not** introduce Supabase/a database/a server-side component
+**vrecnu Phase 1–2 needs none of them** — it is a client-side PWA + a pure-Rust desktop app
+with no backend and no database. Do **not** introduce Supabase/a database/a server-side component
 into the architecture just because a connector is available; that would violate the
 "thin client / bring-your-own-storage" invariant. If a backend ever seems necessary, stop
 and raise it with the maintainer first — it is an architecture change, not an implementation
@@ -53,14 +53,17 @@ during development, that's fine — but shipped code still follows `AGENTS.md` �
 
 ## The rules most likely to trip you up (re-stated — full list in AGENTS.md §10)
 
-- **pnpm only.** Never `npm install` / `yarn`.
-- **Tauri v2 only.** Never Electron.
+- **pnpm only** (TS workspace). Never `npm install` / `yarn`. Desktop is Cargo/Rust.
+- **Phase 2 is a pure-Rust native app — not Tauri, not Electron** (AGENTS.md ADR-001). A web
+  view (`wry`) or the system browser is used **only** for the Drive publish step.
 - **Google Drive scope = `drive.file` and nothing else.** Never a broader/restricted scope;
   never read the user's existing files.
-- **No secrets committed. No client secret in the web bundle** (use GIS/PKCE; desktop uses
-  the loopback flow).
-- **Uploads must be resumable.**
-- **`packages/core` and `packages/storage` stay platform-agnostic** — no browser/Node/Tauri
+- **Drive is web/TS only.** The Rust app never implements OAuth/upload — it hands the local
+  recording to the publish web view, which does PKCE + browser→Drive upload (AGENTS.md §5).
+- **No secrets committed. No client secret in any bundle** (use GIS/PKCE in the web/publish
+  page for both phases; no native loopback-redirect OAuth).
+- **Uploads must be resumable. Recording bytes never transit a vrecnu server.**
+- **`packages/core` and `packages/storage` stay platform-agnostic** — no browser/Node
   imports. Drive access only through the `StorageProvider` interface.
 - **No FFmpeg-heavy editing in the Phase 1 web app** (trim only). Deep editing is Phase 2.
 - **No content telemetry, ever.**
