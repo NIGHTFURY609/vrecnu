@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+.vite/
+target/
+recordings/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db

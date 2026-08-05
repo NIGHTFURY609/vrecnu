@@ -1,0 +1,25 @@
+{
+  "name": "@vrecnu/publish",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vrecnu/core": "workspace:*",
+    "@vrecnu/storage": "workspace:*",
+    "@vrecnu/ui": "workspace:*",
+    "react": "19.2.8"
+  },
+  "peerDependencies": {
+    "react": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings=0"
+  }
+}

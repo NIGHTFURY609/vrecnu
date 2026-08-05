@@ -1,0 +1,29 @@
+{
+  "name": "vrecnu",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "2.10.8",
+    "typescript": "5.9.3",
+    "eslint": "10.8.0",
+    "typescript-eslint": "8.66.0",
+    "@eslint/js": "10.0.1",
+    "globals": "17.9.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-config-prettier": "10.1.8",
+    "vitest": "4.1.10"
+  }
+}
