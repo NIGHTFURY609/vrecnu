@@ -45,4 +45,20 @@ describe("recorderReducer", () => {
   it("does not allow STOP from ready (must be recording first)", () => {
     expect(() => recorderReducer("ready", { type: "STOP" })).toThrow(IllegalRecorderTransitionError);
   });
+
+  /**
+   * Regression: ERROR used to be rejected from `requesting-permissions`, so a failed
+   * getDisplayMedia threw inside the reducer, the caller swallowed it, and the UI sat on
+   * "Requesting access…" forever with no retry. Every non-terminal state must accept ERROR.
+   */
+  it.each(["idle", "requesting-permissions", "ready", "recording", "stopping", "finalizing", "stopped"] as const)(
+    "accepts ERROR from %s",
+    (state) => {
+      expect(recorderReducer(state, { type: "ERROR", reason: "boom" })).toBe("error");
+    },
+  );
+
+  it("lets the user retry straight from error without a RESET round-trip", () => {
+    expect(recorderReducer("error", { type: "REQUEST_PERMISSIONS" })).toBe("requesting-permissions");
+  });
 });

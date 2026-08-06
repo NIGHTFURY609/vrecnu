@@ -92,9 +92,9 @@ export default tseslint.config(
       globals: { ...globals.worker },
     },
   },
-  // Node-executed tooling config files.
+  // Node-executed tooling: config files and build scripts (icon generation, size gates).
   {
-    files: ["*.config.{js,ts}", "vite.config.ts"],
+    files: ["*.config.{js,ts}", "**/*.config.{js,ts}", "**/scripts/**/*.{js,mjs,ts}"],
     languageOptions: {
       globals: { ...globals.node },
     },

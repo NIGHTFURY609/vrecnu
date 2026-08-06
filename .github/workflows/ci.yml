@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  web:
+    name: TypeScript workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,4 +27,45 @@ jobs:
 
       - run: pnpm test
 
-      - run: pnpm --filter web build
+      # Builds both apps: the PWA, and the standalone publish page the Phase 2 desktop exe
+      # embeds (ADR-002). A broken publish build breaks the desktop release, not just the web.
+      - run: pnpm build
+
+      # AGENTS.md §1 calls exceeding a budget "a blocking review finding, not a discussion",
+      # and ADR-004 warns that budgets checked by hand will drift.
+      - name: Check bundle budgets (AGENTS.md §1)
+        run: pnpm --filter web budgets
+
+  desktop:
+    name: Rust desktop (Windows)
+    # Windows-only, and it must be Windows: the desktop app targets
+    # x86_64-pc-windows-msvc and needs the Windows SDK to link at all.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        # Pinned here rather than in rust-toolchain.toml, so a pinned patch release cannot
+        # break offline/air-gapped local builds. Cargo's `rust-version = "1.89"` is the floor.
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+
+      - run: cargo fmt --all -- --check
+
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - run: cargo test --workspace
+
+      # ADR-006's escape hatch is only real while this passes. Do not delete it; see
+      # read_this_idiot.md.
+      - name: Shell boundary is intact (ADR-006)
+        shell: pwsh
+        run: ./scripts/check-shell-boundary.ps1

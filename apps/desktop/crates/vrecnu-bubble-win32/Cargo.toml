@@ -1,0 +1,13 @@
+[package]
+name = "vrecnu-bubble-win32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The floating webcam bubble: a raw Win32 layered window, with no shell dependency."
+
+[dependencies]
+vrecnu-types.workspace = true
+vrecnu-shell-api.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

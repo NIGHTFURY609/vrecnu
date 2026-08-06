@@ -26,15 +26,23 @@ export interface RecorderEvent {
 
 export const INITIAL_RECORDER_STATE: RecorderState = "idle";
 
+/**
+ * `ERROR` is accepted from every non-terminal state on purpose. Anything that can fail must be
+ * able to say so: a state that swallows `ERROR` strands the UI in a busy state with no way out,
+ * because the caller's `catch` has nowhere to route the failure. `error` itself omits `ERROR`
+ * (already there) and `RESET` is the only way forward from a terminal state.
+ */
 const TRANSITIONS: Readonly<Record<RecorderState, Partial<Record<RecorderEventType, RecorderState>>>> = {
-  idle: { REQUEST_PERMISSIONS: "requesting-permissions" },
-  "requesting-permissions": { PERMISSIONS_GRANTED: "ready", PERMISSIONS_DENIED: "error" },
+  idle: { REQUEST_PERMISSIONS: "requesting-permissions", ERROR: "error" },
+  "requesting-permissions": { PERMISSIONS_GRANTED: "ready", PERMISSIONS_DENIED: "error", ERROR: "error" },
   ready: { START: "recording", ERROR: "error" },
   recording: { STOP: "stopping", ERROR: "error" },
   stopping: { CHUNKS_FLUSHED: "finalizing", ERROR: "error" },
   finalizing: { FINALIZED: "stopped", ERROR: "error" },
-  stopped: { RESET: "idle" },
-  error: { RESET: "idle" },
+  stopped: { RESET: "idle", ERROR: "error" },
+  // Retrying straight from `error` is deliberate: the picker is on screen in that state, so
+  // requiring a RESET round-trip first would leave "Start recording" silently inert.
+  error: { RESET: "idle", REQUEST_PERMISSIONS: "requesting-permissions" },
 };
 
 export class IllegalRecorderTransitionError extends Error {

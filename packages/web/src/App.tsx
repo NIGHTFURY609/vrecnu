@@ -3,7 +3,12 @@ import { Button } from "@vrecnu/ui";
 import { useRecordingEngine } from "./recorder/useRecordingEngine";
 import { SourcePicker, type RecordingSourceConfig } from "./recorder/SourcePicker";
 import { DiagnosticsPanel, type SeekCheckStatus } from "./recorder/DiagnosticsPanel";
-import { UploadPanel } from "./upload/UploadPanel";
+import { SessionRecovery } from "./recorder/SessionRecovery";
+import type { RecordingSession } from "./recorder/opfs-sessions";
+import { TrimPanel } from "./recorder/TrimPanel";
+import { sanitizeFileName, saveRecordingToDisk, type SaveOutcome } from "./recorder/download";
+import { CredentialsPanel, UploadPanel } from "@vrecnu/publish";
+import { PwaPrompts } from "./pwa/PwaPrompts";
 
 const DEFAULT_SOURCE_CONFIG: RecordingSourceConfig = { screen: true, webcam: true, mic: true };
 
@@ -43,6 +48,10 @@ export default function App(): JSX.Element {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [seekCheck, setSeekCheck] = useState<SeekCheckStatus>("idle");
+  const [recovered, setRecovered] = useState<{ file: File; session: RecordingSession } | null>(null);
+  const [trimmedFile, setTrimmedFile] = useState<File | null>(null);
+  const [nameBase, setNameBase] = useState("vrecnu-recording");
+  const [saveState, setSaveState] = useState<SaveOutcome | "saving" | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const playbackVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -50,7 +59,16 @@ export default function App(): JSX.Element {
   const isBusy = engine.state === "requesting-permissions" || engine.state === "ready";
   const isFinishing = engine.state === "stopping" || engine.state === "finalizing";
   const isRecording = engine.state === "recording";
-  const stoppedBlob = engine.state === "stopped" ? engine.resultBlob : null;
+  const stoppedFile = engine.state === "stopped" ? engine.resultFile : null;
+  /** A just-finished recording and a recovered one are reviewed through the same surface. */
+  const reviewFile = stoppedFile ?? recovered?.file ?? null;
+  const reviewContainer = stoppedFile ? (engine.container?.container ?? "webm") : (recovered?.session.container ?? "webm");
+  const reviewMimeType = stoppedFile
+    ? (engine.container?.mimeType ?? "video/webm")
+    : (recovered?.file.type ?? "video/webm");
+  /** What upload and download actually operate on — the trimmed file when one exists. */
+  const outputFile = trimmedFile ?? reviewFile;
+  const outputFileName = `${sanitizeFileName(nameBase, "vrecnu-recording")}.${reviewContainer}`;
 
   useEffect(() => {
     const video = previewVideoRef.current;
@@ -61,13 +79,14 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     const video = playbackVideoRef.current;
-    if (!video || !stoppedBlob) {
+    if (!video || !outputFile) {
       return;
     }
-    const url = URL.createObjectURL(stoppedBlob);
+    // Bound to the *output* file so applying a trim immediately updates what the user sees.
+    const url = URL.createObjectURL(outputFile);
     video.src = url;
     return () => URL.revokeObjectURL(url);
-  }, [stoppedBlob]);
+  }, [outputFile]);
 
   useEffect(() => {
     if (!isRecording) {
@@ -87,13 +106,38 @@ export default function App(): JSX.Element {
     }
   };
 
+  /**
+   * Leaving the review surface. A recovered file is only *dismissed*, never deleted — the
+   * user may not have uploaded it yet, and discarding is an explicit choice offered in the
+   * recovery panel. A freshly recorded one goes through `reset()`, which does reclaim it.
+   */
+  const handleDone = (): void => {
+    setSeekCheck("idle");
+    setTrimmedFile(null);
+    setSaveState(null);
+    setNameBase("vrecnu-recording");
+    if (recovered) {
+      setRecovered(null);
+      return;
+    }
+    engine.reset();
+  };
+
+  const handleSaveToDisk = async (): Promise<void> => {
+    if (!outputFile) {
+      return;
+    }
+    setSaveState("saving");
+    setSaveState(await saveRecordingToDisk(outputFile, outputFileName, reviewMimeType));
+  };
+
   const handleRunSeekCheck = async (): Promise<void> => {
-    if (!stoppedBlob) {
+    if (!reviewFile) {
       return;
     }
     setSeekCheck("running");
     try {
-      const passed = await runSeekCheck(stoppedBlob);
+      const passed = await runSeekCheck(reviewFile);
       setSeekCheck(passed ? "pass" : "fail");
     } catch {
       setSeekCheck("fail");
@@ -104,24 +148,44 @@ export default function App(): JSX.Element {
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center gap-6 p-8">
       <h1 className="text-2xl font-semibold">vrecnu</h1>
 
-      {isPicking ? (
+      <PwaPrompts />
+
+      {isPicking && !reviewFile ? (
         <div className="flex w-full flex-col gap-4">
+          <SessionRecovery
+            onRecover={(file, session) => {
+              setSeekCheck("idle");
+              setRecovered({ file, session });
+            }}
+          />
           <SourcePicker value={sourceConfig} onChange={setSourceConfig} />
-          {engine.errorMessage ? <p className="text-sm text-red-600">{engine.errorMessage}</p> : null}
+          <CredentialsPanel buildTimeClientId={import.meta.env.VITE_GOOGLE_CLIENT_ID} />
+          {engine.errorMessage ? (
+            <p className="text-sm text-red-600" role="alert">
+              {engine.errorMessage}
+            </p>
+          ) : null}
           <Button onClick={() => void handleStart()} disabled={!sourceConfig.screen && !sourceConfig.webcam}>
             Start recording
           </Button>
         </div>
       ) : null}
 
-      {isBusy ? <p className="text-sm text-gray-500">Requesting access…</p> : null}
-      {isFinishing ? <p className="text-sm text-gray-500">Finishing up…</p> : null}
+      <div aria-live="polite" className="w-full text-center">
+        {isBusy ? <p className="text-sm text-gray-500">Requesting access…</p> : null}
+        {isFinishing ? <p className="text-sm text-gray-500">Finishing up…</p> : null}
+      </div>
 
       {isRecording ? (
         <div className="flex w-full flex-col items-center gap-4">
           <video ref={previewVideoRef} autoPlay muted playsInline className="aspect-video w-full rounded-md bg-black" />
           <div className="flex items-center gap-4">
-            <span className="font-mono text-lg">{formatElapsed(elapsedSec)}</span>
+            <span className="font-mono text-lg" aria-hidden="true">
+              {formatElapsed(elapsedSec)}
+            </span>
+            <span className="sr-only" role="status">
+              Recording, {elapsedSec} seconds elapsed
+            </span>
             <Button variant="destructive" onClick={engine.stop}>
               Stop
             </Button>
@@ -129,16 +193,73 @@ export default function App(): JSX.Element {
         </div>
       ) : null}
 
-      {stoppedBlob ? (
+      {reviewFile ? (
         <div className="flex w-full flex-col gap-4">
+          {recovered ? (
+            <p className="text-sm text-amber-800" role="status">
+              Recovered from {new Date(recovered.session.startedAt).toLocaleString()}.
+            </p>
+          ) : null}
           <video ref={playbackVideoRef} controls className="aspect-video w-full rounded-md bg-black" />
-          <UploadPanel
-            file={stoppedBlob}
-            fileName={`vrecnu-recording.${engine.container?.container ?? "webm"}`}
-            mimeType={engine.container?.mimeType ?? "video/webm"}
+
+          <TrimPanel
+            file={reviewFile}
+            mimeType={reviewMimeType}
+            container={reviewContainer}
+            onSeek={(seconds) => {
+              if (playbackVideoRef.current) {
+                playbackVideoRef.current.currentTime = seconds;
+              }
+            }}
+            onTrimmed={setTrimmedFile}
           />
-          <Button variant="outline" onClick={engine.reset}>
-            Record again
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-gray-700">File name</span>
+            <span className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nameBase}
+                onChange={(event) => setNameBase(event.target.value)}
+                className="flex-1 rounded-md border border-slate-300 px-2 py-1"
+              />
+              <span className="text-gray-500">.{reviewContainer}</span>
+            </span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => void handleSaveToDisk()} disabled={saveState === "saving"}>
+              {saveState === "saving" ? "Saving…" : "Save a local copy"}
+            </Button>
+            {saveState === "saved" ? (
+              <span className="text-sm text-green-700" role="status">
+                Saved.
+              </span>
+            ) : null}
+            {saveState === "unsupported-fallback" ? (
+              <span className="text-sm text-gray-600" role="status">
+                Downloaded to your browser&apos;s downloads folder.
+              </span>
+            ) : null}
+          </div>
+
+          {outputFile ? (
+            <UploadPanel
+              source={outputFile}
+              fileName={outputFileName}
+              mimeType={reviewMimeType}
+              durationWarning={
+                engine.durationOutcome &&
+                !engine.durationOutcome.applied &&
+                engine.durationOutcome.reason !== "not-webm-container"
+                  ? "This recording has no duration recorded, so it may not seek correctly in Drive's preview player."
+                  : null
+              }
+            />
+          ) : null}
+
+          <Button variant="outline" onClick={handleDone}>
+            {recovered ? "Done" : "Record again"}
           </Button>
         </div>
       ) : null}
@@ -147,12 +268,14 @@ export default function App(): JSX.Element {
         <button
           type="button"
           className="text-sm text-gray-500 underline"
+          aria-expanded={showDiagnostics}
+          aria-controls="vrecnu-diagnostics"
           onClick={() => setShowDiagnostics((prev) => !prev)}
         >
           {showDiagnostics ? "Hide diagnostics" : "Show diagnostics"}
         </button>
         {showDiagnostics ? (
-          <div className="mt-2">
+          <div className="mt-2" id="vrecnu-diagnostics">
             <DiagnosticsPanel
               state={engine.state}
               container={engine.container}

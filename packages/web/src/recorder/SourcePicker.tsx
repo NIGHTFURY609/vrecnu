@@ -96,6 +96,7 @@ export function SourcePicker({ value, onChange, disabled }: SourcePickerProps): 
         {value.webcam ? (
           <select
             className="ml-6 rounded border border-gray-300 px-2 py-1 text-sm"
+            aria-label="Camera device"
             disabled={disabled}
             value={value.cameraDeviceId ?? ""}
             onChange={(event) => update({ cameraDeviceId: event.target.value || undefined })}
@@ -116,6 +117,7 @@ export function SourcePicker({ value, onChange, disabled }: SourcePickerProps): 
         {value.mic ? (
           <select
             className="ml-6 rounded border border-gray-300 px-2 py-1 text-sm"
+            aria-label="Microphone device"
             disabled={disabled}
             value={value.micDeviceId ?? ""}
             onChange={(event) => update({ micDeviceId: event.target.value || undefined })}
@@ -136,7 +138,11 @@ export function SourcePicker({ value, onChange, disabled }: SourcePickerProps): 
         </Button>
       )}
 
-      {noVideoSourceSelected ? <p className="text-sm text-red-600">Select Screen and/or Webcam to record.</p> : null}
+      {noVideoSourceSelected ? (
+        <p className="text-sm text-red-600" role="alert">
+          Select Screen and/or Webcam to record.
+        </p>
+      ) : null}
     </div>
   );
 }

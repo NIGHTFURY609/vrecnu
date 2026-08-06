@@ -1,0 +1,11 @@
+[package]
+name = "vrecnu-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Domain types shared across every vrecnu desktop crate. No platform dependencies."
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true

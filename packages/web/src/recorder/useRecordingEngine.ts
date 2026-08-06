@@ -9,7 +9,8 @@ import {
 import { startComposite, type CompositeHandle } from "./composite";
 import { selectContainer, type SelectedContainer } from "./container-detection";
 import { startOpfsRecorder, type OpfsRecorderHandle } from "./opfs-recorder-client";
-import { patchWebmDuration } from "./webm-duration-fix";
+import type { DurationPatchOutcome, StorageTier } from "./opfs-recorder.worker";
+import { buildRecordingFileName, deleteRecording, getRecordingFile } from "./opfs-sessions";
 import type { RecordingSourceConfig } from "./SourcePicker";
 
 const RECORDER_TIMESLICE_MS = 2000;
@@ -35,12 +36,35 @@ export interface UseRecordingEngineResult {
   state: RecorderState;
   container: SelectedContainer | null;
   diagnostics: RecordingDiagnostics;
-  resultBlob: Blob | null;
+  /**
+   * The finished recording as a disk-backed `File` straight off OPFS. Deliberately never a
+   * RAM-materialized `Blob` — see the duration-patch note in the OPFS worker.
+   */
+  resultFile: File | null;
+  /** Whether the container ended up with a valid duration, and why not when it didn't. */
+  durationOutcome: DurationPatchOutcome | null;
+  /** Which storage tier the recording actually used — OPFS, or the IndexedDB fallback. */
+  storageTier: StorageTier | null;
   errorMessage: string | null;
   previewStream: MediaStream | null;
   start: (config: RecordingSourceConfig) => Promise<void>;
   stop: () => void;
   reset: () => void;
+}
+
+/**
+ * Screen/camera permission prompts reject with these; they are a user decision, not a
+ * failure, and route to PERMISSIONS_DENIED so the UI can offer a plain retry.
+ */
+function isPermissionDenial(err: unknown): boolean {
+  return err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
+}
+
+function describeError(err: unknown, fallback: string): string {
+  if (isPermissionDenial(err)) {
+    return "Screen or camera access was denied. Grant permission in your browser and try again.";
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 interface PerformanceMemory {
@@ -100,7 +124,9 @@ export function useRecordingEngine(): UseRecordingEngineResult {
   const [state, setState] = useState<RecorderState>(INITIAL_RECORDER_STATE);
   const [container, setContainer] = useState<SelectedContainer | null>(null);
   const [diagnostics, setDiagnostics] = useState<RecordingDiagnostics>(INITIAL_DIAGNOSTICS);
-  const [resultBlob, setResultBlob] = useState<Blob | null>(null);
+  const [resultFile, setResultFile] = useState<File | null>(null);
+  const [durationOutcome, setDurationOutcome] = useState<DurationPatchOutcome | null>(null);
+  const [storageTier, setStorageTier] = useState<StorageTier | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
@@ -114,6 +140,8 @@ export function useRecordingEngine(): UseRecordingEngineResult {
   const pendingWritesRef = useRef<Promise<void>>(Promise.resolve());
   const pollRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  /** OPFS name of the finished recording, so `reset()` can delete it rather than leak quota. */
+  const recordedFileNameRef = useRef<string | null>(null);
 
   const send = useCallback((event: RecorderEvent) => {
     setState((prev) => {
@@ -158,7 +186,8 @@ export function useRecordingEngine(): UseRecordingEngineResult {
       }
 
       setErrorMessage(null);
-      setResultBlob(null);
+      setResultFile(null);
+      setDurationOutcome(null);
       setDiagnostics(INITIAL_DIAGNOSTICS);
 
       let selected: SelectedContainer;
@@ -196,122 +225,173 @@ export function useRecordingEngine(): UseRecordingEngineResult {
           micStreamRef.current = micStream;
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to acquire recording sources";
+        const message = describeError(err, "Failed to acquire recording sources");
         setErrorMessage(message);
-        send({ type: "ERROR", reason: message });
+        send({ type: isPermissionDenial(err) ? "PERMISSIONS_DENIED" : "ERROR", reason: message });
         stopAllTracks();
         throw err;
       }
 
       send({ type: "PERMISSIONS_GRANTED" });
 
-      let videoTrack: MediaStreamTrack;
-      let liveStream: MediaStream;
+      try {
+        let videoTrack: MediaStreamTrack;
+        let liveStream: MediaStream;
 
-      if (config.screen && screenStream) {
-        const screenVideo = createOffscreenVideo(screenStream);
-        await waitForVideoReady(screenVideo);
+        if (config.screen && screenStream) {
+          const screenVideo = createOffscreenVideo(screenStream);
+          await waitForVideoReady(screenVideo);
 
-        let webcamVideo: HTMLVideoElement | null = null;
-        if (webcamStream) {
-          webcamVideo = createOffscreenVideo(webcamStream);
-          await waitForVideoReady(webcamVideo);
+          let webcamVideo: HTMLVideoElement | null = null;
+          if (webcamStream) {
+            webcamVideo = createOffscreenVideo(webcamStream);
+            await waitForVideoReady(webcamVideo);
+          }
+
+          const composite = startComposite({
+            screenVideo,
+            webcamVideo,
+            width: screenVideo.videoWidth,
+            height: screenVideo.videoHeight,
+            onFrame: (frameDiagnostics) =>
+              setDiagnostics((prev) => ({
+                ...prev,
+                compositedFrames: frameDiagnostics.compositedFrames,
+                droppedVideoFrames: frameDiagnostics.droppedVideoFrames,
+              })),
+          });
+          compositeRef.current = composite;
+
+          const [track] = composite.stream.getVideoTracks();
+          if (!track) {
+            throw new Error("Composite canvas produced no video track");
+          }
+          videoTrack = track;
+          liveStream = composite.stream;
+        } else if (webcamStream) {
+          const [track] = webcamStream.getVideoTracks();
+          if (!track) {
+            throw new Error("Webcam stream produced no video track");
+          }
+          videoTrack = track;
+          liveStream = webcamStream;
+        } else {
+          throw new Error("No video source acquired");
         }
 
-        const composite = startComposite({
-          screenVideo,
-          webcamVideo,
-          width: screenVideo.videoWidth,
-          height: screenVideo.videoHeight,
-          onFrame: (frameDiagnostics) =>
-            setDiagnostics((prev) => ({
-              ...prev,
-              compositedFrames: frameDiagnostics.compositedFrames,
-              droppedVideoFrames: frameDiagnostics.droppedVideoFrames,
-            })),
+        // Only stand up an AudioContext when there is actually something to mix — an unused
+        // one stays open (and audible to the OS as an active audio client) until teardown.
+        const audioSources = [screenStream, micStream].filter((stream): stream is MediaStream => stream !== null);
+        const hasAudio = audioSources.some((stream) => stream.getAudioTracks().length > 0);
+        let mergedAudioTrack: MediaStreamTrack | null = null;
+        if (hasAudio) {
+          const audioContext = new AudioContext();
+          audioContextRef.current = audioContext;
+          mergedAudioTrack = mergeAudioTracks(audioContext, audioSources);
+        }
+
+        const combinedStream = new MediaStream([videoTrack, ...(mergedAudioTrack ? [mergedAudioTrack] : [])]);
+        setPreviewStream(liveStream);
+
+        const fileName = buildRecordingFileName(selected.container);
+        const opfs = await startOpfsRecorder({
+          fileName,
+          container: selected.container,
+          mimeType: selected.mimeType,
         });
-        compositeRef.current = composite;
+        opfsRef.current = opfs;
+        recordedFileNameRef.current = fileName;
+        setStorageTier(opfs.tier);
 
-        const [track] = composite.stream.getVideoTracks();
-        if (!track) {
-          throw new Error("Composite canvas produced no video track");
-        }
-        videoTrack = track;
-        liveStream = composite.stream;
-      } else if (webcamStream) {
-        const [track] = webcamStream.getVideoTracks();
-        if (!track) {
-          throw new Error("Webcam stream produced no video track");
-        }
-        videoTrack = track;
-        liveStream = webcamStream;
-      } else {
-        throw new Error("No video source acquired");
-      }
+        const recorder = new MediaRecorder(combinedStream, { mimeType: selected.mimeType });
+        mediaRecorderRef.current = recorder;
 
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-      const audioSources = [screenStream, micStream].filter((stream): stream is MediaStream => stream !== null);
-      const mergedAudioTrack = mergeAudioTracks(audioContext, audioSources);
+        recorder.ondataavailable = (event: BlobEvent) => {
+          if (event.data.size === 0) {
+            return;
+          }
+          pendingWritesRef.current = pendingWritesRef.current.then(async () => {
+            const buffer = await event.data.arrayBuffer();
+            opfs.writeChunk(buffer);
+          });
+        };
 
-      const combinedStream = new MediaStream([videoTrack, ...(mergedAudioTrack ? [mergedAudioTrack] : [])]);
-      setPreviewStream(liveStream);
+        const finalizeRecording = async (): Promise<void> => {
+          send({ type: "CHUNKS_FLUSHED" });
+          await pendingWritesRef.current;
 
-      const opfs = await startOpfsRecorder(`vrecnu-${Date.now()}.${selected.container}`);
-      opfsRef.current = opfs;
+          const durationMs = performance.now() - startTimeRef.current;
+          const { bytesWritten, duration, location } = await opfs.finalize(durationMs);
+          setDiagnostics((prev) => ({ ...prev, opfsBytesWritten: bytesWritten, durationSec: durationMs / 1000 }));
+          setDurationOutcome(duration);
 
-      const recorder = new MediaRecorder(combinedStream, { mimeType: selected.mimeType });
-      mediaRecorderRef.current = recorder;
+          // The result is the on-disk file itself. Reading it into a Blob to patch metadata is
+          // what AGENTS.md §10 forbids — the duration was written in place while streaming.
+          if (location.tier === "opfs") {
+            const file = await getRecordingFile(location.fileName);
+            if (!file) {
+              throw new Error("The finished recording could not be read back from storage");
+            }
+            setResultFile(file);
+          } else {
+            // The IndexedDB tier hands back an assembled Blob; wrap it so downstream code
+            // (upload, download, playback) sees the same shape either way.
+            setResultFile(new File([location.blob], fileName, { type: selected.mimeType }));
+          }
 
-      recorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size === 0) {
-          return;
-        }
-        pendingWritesRef.current = pendingWritesRef.current.then(async () => {
-          const buffer = await event.data.arrayBuffer();
-          opfs.writeChunk(buffer);
-        });
-      };
+          if (pollRef.current !== null) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          opfs.terminate();
+          opfsRef.current = null;
+          setPreviewStream(null);
+          stopAllTracks();
+          send({ type: "FINALIZED" });
+        };
 
-      async function finalizeRecording(): Promise<void> {
-        send({ type: "CHUNKS_FLUSHED" });
-        await pendingWritesRef.current;
+        recorder.onstop = () => {
+          void finalizeRecording().catch((err: unknown) => {
+            const message = describeError(err, "Failed to finalize the recording");
+            setErrorMessage(message);
+            send({ type: "ERROR", reason: message });
+            opfs.terminate();
+            opfsRef.current = null;
+            setPreviewStream(null);
+            stopAllTracks();
+          });
+        };
 
-        const { fileName, bytesWritten } = await opfs.finalize();
-        const durationMs = performance.now() - startTimeRef.current;
-        setDiagnostics((prev) => ({ ...prev, opfsBytesWritten: bytesWritten, durationSec: durationMs / 1000 }));
+        startTimeRef.current = performance.now();
+        recorder.start(RECORDER_TIMESLICE_MS);
+        send({ type: "START" });
 
-        const root = await navigator.storage.getDirectory();
-        const fileHandle = await root.getFileHandle(fileName);
-        let fileBlob: Blob = await fileHandle.getFile();
-        if (selected.container === "webm") {
-          fileBlob = await patchWebmDuration(fileBlob, durationMs);
-        }
-        setResultBlob(fileBlob);
-
+        pollRef.current = window.setInterval(() => {
+          setDiagnostics((prev) => ({
+            ...prev,
+            opfsBytesWritten: opfs.getDiagnostics().bytesWritten,
+            heapUsedBytes: readHeapUsedBytes(),
+          }));
+        }, DIAGNOSTICS_POLL_MS);
+      } catch (err) {
+        // Everything past the permission prompt runs while the machine is in `ready`, so a
+        // throw here has to be routed too — otherwise the UI sits on "Requesting access…"
+        // forever with the caller's catch holding the only record of what went wrong.
+        const message = describeError(err, "Failed to start recording");
+        setErrorMessage(message);
+        send({ type: "ERROR", reason: message });
+        compositeRef.current?.stop();
+        compositeRef.current = null;
+        opfsRef.current?.terminate();
+        opfsRef.current = null;
         if (pollRef.current !== null) {
           window.clearInterval(pollRef.current);
           pollRef.current = null;
         }
-        opfs.terminate();
         setPreviewStream(null);
         stopAllTracks();
-        send({ type: "FINALIZED" });
+        throw err;
       }
-
-      recorder.onstop = () => void finalizeRecording();
-
-      startTimeRef.current = performance.now();
-      recorder.start(RECORDER_TIMESLICE_MS);
-      send({ type: "START" });
-
-      pollRef.current = window.setInterval(() => {
-        setDiagnostics((prev) => ({
-          ...prev,
-          opfsBytesWritten: opfs.getDiagnostics().bytesWritten,
-          heapUsedBytes: readHeapUsedBytes(),
-        }));
-      }, DIAGNOSTICS_POLL_MS);
     },
     [send, stopAllTracks],
   );
@@ -332,13 +412,36 @@ export function useRecordingEngine(): UseRecordingEngineResult {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    // Reclaim the quota this session consumed. Terminating the worker above released the
+    // sync access handle that would otherwise keep `removeEntry` from succeeding. Without
+    // this, every recording occupies origin storage permanently and invisibly.
+    const fileName = recordedFileNameRef.current;
+    recordedFileNameRef.current = null;
+    if (fileName) {
+      void deleteRecording(fileName);
+    }
+
     setPreviewStream(null);
-    setResultBlob(null);
+    setResultFile(null);
+    setDurationOutcome(null);
+    setStorageTier(null);
     setErrorMessage(null);
     setContainer(null);
     setDiagnostics(INITIAL_DIAGNOSTICS);
     send({ type: "RESET" });
   }, [send, stopAllTracks]);
 
-  return { state, container, diagnostics, resultBlob, errorMessage, previewStream, start, stop, reset };
+  return {
+    state,
+    container,
+    diagnostics,
+    resultFile,
+    durationOutcome,
+    storageTier,
+    errorMessage,
+    previewStream,
+    start,
+    stop,
+    reset,
+  };
 }

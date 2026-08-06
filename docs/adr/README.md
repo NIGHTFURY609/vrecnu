@@ -30,8 +30,10 @@ silently rewrite an accepted ADR — the wrong-turn record is the point.
 
 | # | Title | Status | Date |
 |---|---|---|---|
-| [001](001-phase-2-pure-rust-desktop.md) | Phase 2 is a pure-Rust desktop app, not Tauri | Accepted — rationale amended by 005 | 2026-08 |
+| [001](001-phase-2-pure-rust-desktop.md) | Phase 2 is a pure-Rust desktop app, not Tauri | **Superseded on the shell question by 006** — rationale had been amended by 005 | 2026-08 |
 | [002](002-desktop-publish-loopback-origin.md) | Desktop publish page is served from a loopback HTTP origin | Accepted | 2026-08-02 |
 | [003](003-phase-1-capture-pipeline.md) | Phase 1 capture pipeline: chunk-to-disk, container choice, composite clock | Accepted — §3.1 amended 2026-08-03 (OPFS) | 2026-08-02 |
 | [004](004-ffmpeg-sidecar-and-size-budgets.md) | FFmpeg ships as a separate process; numeric size/CPU budgets | Accepted — reaffirmed 2026-08-03 | 2026-08-02 |
 | [005](005-installed-app-not-portable.md) | Phase 2 ships as an installed app, not a portable exe | Accepted | 2026-08-03 |
+| [006](006-phase-2-tauri-shell-with-swappable-core.md) | Phase 2 uses a Tauri v2 shell over a shell-agnostic core (supersedes 001) | Accepted | 2026-08-06 |
+| [007](007-ffmpeg-h264-encoder-and-licensing.md) | The H.264 encoder: `h264_mf`, resolving 004's LGPL contradiction (amends 004) | Accepted | 2026-08-06 |

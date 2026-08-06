@@ -86,18 +86,26 @@ is forbidden waste.
 | Language | **TypeScript, strict mode** | No plain `.js`/`.jsx` source. No `any` without an inline justification comment. |
 | UI | **React 19 + Vite** | Shared component lib in `packages/ui`. |
 | Styling | **Tailwind CSS + shadcn/ui** | No competing CSS-in-JS runtime libs. |
-| State | **Zustand** | Do not add Redux/MobX/etc. |
+| State | **Zustand** *(when shared state is actually needed)* | Do not add Redux/MobX/etc. The recorder currently keeps its state local to `useRecordingEngine`, so no store is installed — add Zustand when state genuinely needs sharing, not before (§3's "when in doubt, don't add it"). |
 | Package manager | **pnpm** (workspaces) | **NEVER** run `npm install` or `yarn` — it will corrupt the lockfile. Only `pnpm`. |
 | Monorepo | **Turborepo** | Respect package boundaries (see §4). |
-| Desktop shell / GUI | **Pure-Rust native GUI** (`egui` default; `Slint`/`iced` allowed) | **Electron is forbidden.** **Tauri is no longer used** (see ADR-001) — the main desktop UI is native Rust with **no WebView2 dependency**. A WebView (`wry`) or the system browser is used *only* for the publish step (§5). |
-| Desktop windowing | **`winit`** | Hosts the main window and the transparent always-on-top bubble window. |
+| Desktop shell / GUI | **Tauri v2**, over a shell-agnostic core ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)) | **Electron is forbidden.** Tauri is permitted again — ADR-006 supersedes ADR-001 on the shell question only. **Every Tauri dependency must live in `vrecnu-shell-tauri` and nowhere else**; the headless `vrecnu-cli` shell is built in CI as a link-time proof of that. `egui`/`Slint`/`iced` remain the documented fallback. |
+| Desktop bubble window | **Raw Win32 layered window** (`windows` crate + `tiny-skia`) | Not a second Tauri webview: that would force the camera open twice, which hard-fails on virtual/OEM devices *after* the user hits record. Survives a shell swap unchanged. |
 | Native capture | `scap` / `windows-capture` (Rust) | Phase 2+ only. |
-| Encode/edit (desktop) | **FFmpeg as a bundled sidecar — separate child process ONLY** | **Never link FFmpeg into our binary** (`ffmpeg-next`/`ffmpeg-sys`/any bindings are forbidden — we are MIT, FFmpeg is LGPL/GPL; see [ADR-004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md)). Prefer an LGPL build, stripped to the codecs/filters we use, ≤ 25 MB. Document version + `configure` line in NOTICE. Bundle at package time; do not commit the binary. |
+| Encode/edit (desktop) | **FFmpeg as a bundled sidecar — separate child process ONLY** | **Never link FFmpeg into our binary** (`ffmpeg-next`/`ffmpeg-sys`/any bindings are forbidden — we are MIT, FFmpeg is LGPL/GPL; see [ADR-004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md)). Prefer an LGPL build, stripped to the codecs/filters we use, ≤ 25 MB. **H.264 encode is `h264_mf`, not `libx264`** — `libx264` requires `--enable-gpl` and cannot exist in an LGPL build ([ADR-007](docs/adr/007-ffmpeg-h264-encoder-and-licensing.md)). Document version + `configure` line in NOTICE. Bundle at package time; do not commit the binary. |
 | Cloud/storage | Google **Drive REST v3** via `fetch` + GIS | No heavyweight Google SDK. Behind the `StorageProvider` interface. **Implemented in the web/TS code only** — the Rust app does not call Drive (see §5). |
 
 Adding a new runtime dependency requires justification against the *lightweight* invariant.
 Prefer the platform API or a small utility over a framework. When in doubt, don't add it.
 
+> **SUPERSEDED by [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md) (2026-08-06):
+> Phase 2 uses a Tauri v2 shell over a shell-agnostic core.** Tauri wins on installer +
+> auto-update (ADR-005's open action items) and on the recorder chrome ADR-001 itself called
+> cheap to lose. The reversal is affordable *because* ADR-001 was right that the hard parts —
+> capture, audio, the bubble — are native regardless of shell. The escape hatch back to a
+> pure-Rust shell is structural, not aspirational: see `read_this_idiot.md`.
+> The historical rationale follows.
+>
 > **ADR-001 (Aug 2026, maintainer-authorized): Phase 2 is a pure-Rust app, not Tauri.**
 > *(Rationale amended by [ADR-005](docs/adr/005-installed-app-not-portable.md): the decision
 > stands, but the reason is now **runtime footprint during capture** — ~30–50 MB RSS native vs
@@ -124,6 +132,8 @@ Every non-obvious rule in this file is backed by an ADR in **`docs/adr/`**. Curr
 | [003](docs/adr/003-phase-1-capture-pipeline.md) | Chunk-to-disk, container ladder, composite clock | §6 |
 | [004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md) | FFmpeg as a separate process; size/CPU budgets | §1, §3 |
 | [005](docs/adr/005-installed-app-not-portable.md) | Installed app + auto-update, not a portable exe | §1, §2 |
+| [006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md) | Tauri v2 shell over a shell-agnostic core (supersedes 001) | §2, §3, §4 |
+| [007](docs/adr/007-ffmpeg-h264-encoder-and-licensing.md) | `h264_mf` over `libx264`; the `configure` line (amends 004) | §3 |
 
 Substituting a fixed choice above requires a **new ADR**, not an edit to an existing one.
 
@@ -135,12 +145,13 @@ Substituting a fixed choice above requires a **new ADR**, not an edit to an exis
 packages/                       # TypeScript / pnpm workspace (web side)
   core/      # shared TS: recorder state machine, domain types. PLATFORM-AGNOSTIC.
   storage/   # StorageProvider interface + providers (GoogleDriveProvider first).
-  ui/        # shared React components. Browser-safe only. WEB APP ONLY now.
+  ui/        # shared React components. Browser-safe only. Used by the PWA, the publish
+             #   page, AND the Phase 2 desktop UI again (ADR-006 restored this).
   publish/   # the "connect & upload" page (PKCE + browser→Drive upload).
              #   loaded by BOTH the PWA and the Phase 2 desktop web view.
   web/       # Phase 1 PWA. Browser capture engine lives here.
 apps/
-  desktop/   # Phase 2 PURE RUST app (Cargo crate — NOT Tauri, NO src-tauri/).
+  desktop/   # Phase 2 Cargo workspace. Tauri v2 shell + Tauri-free core crates (ADR-006).
              #   egui/winit UI, scap capture, cpal audio, ffmpeg sidecar,
              #   wry publish web view + loopback file bridge.
 ```
@@ -349,7 +360,9 @@ cargo test   --manifest-path apps/desktop/Cargo.toml    # Rust unit tests
 ## 10. Hard "do NOT" list (quick reference)
 
 - ❌ `npm install` / `yarn` — pnpm only (for the TS workspace).
-- ❌ Electron. Also ❌ Tauri / any WebView shell for the **main** desktop UI — Phase 2 is a
+- ❌ Electron. ❌ Naming `tauri`/`tao`/`wry`/`webview2-com` in any crate except
+  `vrecnu-shell-tauri`, and ❌ deleting `vrecnu-cli` — it is the link-time proof that the
+  shell is still swappable (ADR-006). Formerly this line banned Tauri outright; Phase 2 was a
   pure-Rust native GUI (ADR-001). A web view is allowed **only** for the publish step (§5).
 - ❌ Implementing Google Drive / OAuth / upload inside the Rust desktop crate — it lives in
   `packages/publish` and runs in the web view.

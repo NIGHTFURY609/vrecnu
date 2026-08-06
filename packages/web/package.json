@@ -8,24 +8,27 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings=0",
-    "test": "vitest run"
+    "test": "vitest run --pool=threads",
+    "icons": "node scripts/make-icons.mjs public",
+    "budgets": "node scripts/check-budgets.mjs dist"
   },
   "dependencies": {
     "@vrecnu/core": "workspace:*",
+    "@vrecnu/publish": "workspace:*",
     "@vrecnu/storage": "workspace:*",
     "@vrecnu/ui": "workspace:*",
-    "@vrecnu/publish": "workspace:*",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "zustand": "5.0.14"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "vite": "8.2.0",
-    "@vitejs/plugin-react": "6.0.5",
     "@tailwindcss/vite": "4.3.3",
-    "tailwindcss": "4.3.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
-    "fix-webm-duration": "1.0.6"
+    "@vitejs/plugin-react": "6.0.5",
+    "tailwindcss": "4.3.3",
+    "vite": "8.2.0",
+    "vite-plugin-pwa": "^1.3.0",
+    "workbox-window": "^7.4.1",
+    "vitest": "4.1.10"
   }
 }

@@ -1,0 +1,22 @@
+[package]
+name = "vrecnu-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Session orchestration. Owns every thread; knows nothing about any shell."
+
+# The boundary in dependency form. If `tauri` ever appears here, the CI gate fails and the
+# escape hatch in ADR-006 is gone.
+[dependencies]
+vrecnu-types.workspace = true
+vrecnu-shell-api.workspace = true
+vrecnu-capture.workspace = true
+vrecnu-audio.workspace = true
+vrecnu-camera.workspace = true
+vrecnu-encode.workspace = true
+vrecnu-publish-server.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true

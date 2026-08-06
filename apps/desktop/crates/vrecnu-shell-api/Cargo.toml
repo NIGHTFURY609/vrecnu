@@ -1,0 +1,15 @@
+[package]
+name = "vrecnu-shell-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The boundary between vrecnu's engine and whatever shell is driving it."
+
+[dependencies]
+vrecnu-types.workspace = true
+serde.workspace = true
+crossbeam-channel.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
