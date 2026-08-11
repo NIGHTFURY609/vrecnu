@@ -1,0 +1,23 @@
+[package]
+name = "vrecnu-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Headless vrecnu. Exists to prove the engine has no shell dependency (ADR-006)."
+
+[[bin]]
+name = "vrecnu-cli"
+path = "src/main.rs"
+
+# Deliberately minimal, and deliberately free of `tauri`. CI builds this binary on every
+# commit; if it ever fails to link, the escape hatch in ADR-006 has closed without anyone
+# noticing. Argument parsing is hand-rolled rather than pulling in `clap`, both to keep the
+# dependency graph honest and because the surface is four subcommands.
+[dependencies]
+vrecnu-types.workspace = true
+vrecnu-shell-api.workspace = true
+vrecnu-engine.workspace = true
+vrecnu-publish-server.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.89"
+repository = "https://github.com/jeswin-christie/vrecnu"
+
+# Shared across every crate. Note what is NOT here: `tauri`, `tao`, `wry`, `webview2-com`.
+# Those belong to `vrecnu-shell-tauri` alone (ADR-006), so they are declared in that crate's
+# own manifest rather than being made ambiently available to the workspace.
+[workspace.dependencies]
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+vrecnu-types = { path = "crates/vrecnu-types" }
+vrecnu-shell-api = { path = "crates/vrecnu-shell-api" }
+vrecnu-capture = { path = "crates/vrecnu-capture" }
+vrecnu-audio = { path = "crates/vrecnu-audio" }
+vrecnu-camera = { path = "crates/vrecnu-camera" }
+vrecnu-encode = { path = "crates/vrecnu-encode" }
+vrecnu-publish-server = { path = "crates/vrecnu-publish-server" }
+vrecnu-bubble-win32 = { path = "crates/vrecnu-bubble-win32" }
+vrecnu-engine = { path = "crates/vrecnu-engine" }
+
+# Tuned for the ≤15 MB exe budget in AGENTS.md §1. `panic = "abort"` also means a panicking
+# capture thread takes the process down rather than leaving a half-written recording behind
+# a poisoned lock — see the crash-survivability note in vrecnu-encode.
+[profile.release]
+lto = "fat"
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Capture and encode are unusably slow in an unoptimised build; a debug session would drop
+# frames for reasons that have nothing to do with the code under test.
+[profile.dev.package."*"]
+opt-level = 2

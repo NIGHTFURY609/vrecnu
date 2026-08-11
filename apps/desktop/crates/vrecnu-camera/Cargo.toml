@@ -1,0 +1,12 @@
+[package]
+name = "vrecnu-camera"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Sole owner of the webcam device, fanning frames out to every consumer."
+
+[dependencies]
+vrecnu-types.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

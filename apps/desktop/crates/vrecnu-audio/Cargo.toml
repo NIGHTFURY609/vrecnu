@@ -1,0 +1,12 @@
+[package]
+name = "vrecnu-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "WASAPI loopback and microphone capture, mixed to 48 kHz stereo s16."
+
+[dependencies]
+vrecnu-types.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

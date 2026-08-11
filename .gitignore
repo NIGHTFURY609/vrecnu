@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+.vite/
+target/
+recordings/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+
+# Local tooling state and scratch captures — AGENTS.md §9 (no generated artifacts in git).
+.tokensave/
+Screenshot*.png

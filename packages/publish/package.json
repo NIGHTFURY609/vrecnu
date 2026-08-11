@@ -1,0 +1,35 @@
+{
+  "name": "@vrecnu/publish",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vrecnu/core": "workspace:*",
+    "@vrecnu/storage": "workspace:*",
+    "@vrecnu/ui": "workspace:*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "peerDependencies": {
+    "react": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "vite": "8.2.0",
+    "@vitejs/plugin-react": "6.0.5",
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "@types/react-dom": "19.2.4",
+    "vitest": "4.1.10"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run --pool=threads"
+  }
+}

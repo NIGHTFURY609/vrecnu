@@ -1,0 +1,12 @@
+[toolchain]
+# `stable` rather than a pinned patch release: pinning here makes rustup fetch that exact
+# channel, which breaks offline and air-gapped builds even when a perfectly good stable
+# toolchain is already installed.
+#
+# The real floor is `rust-version = "1.89"` in Cargo.toml, which cargo enforces at build time
+# and which cannot be satisfied by accident. CI pins an exact toolchain in its setup step,
+# where reproducibility actually matters and the network is available.
+channel = "stable"
+# Windows-first (AGENTS.md §2). `windows-capture` and ADR-007's Media Foundation encoder path
+# both require the MSVC toolchain.
+targets = ["x86_64-pc-windows-msvc"]

@@ -1,0 +1,12 @@
+[package]
+name = "vrecnu-publish-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The loopback HTTP server that hands one recording to the publish page (ADR-002)."
+
+[dependencies]
+vrecnu-types.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
