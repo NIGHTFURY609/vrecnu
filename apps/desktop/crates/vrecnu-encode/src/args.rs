@@ -386,7 +386,11 @@ mod tests {
             H264Encoder::MediaFoundation,
             6_000_000,
         );
-        assert!(joined(&args).contains("-profile:v 100"), "{}", joined(&args));
+        assert!(
+            joined(&args).contains("-profile:v 100"),
+            "{}",
+            joined(&args)
+        );
     }
 
     #[test]

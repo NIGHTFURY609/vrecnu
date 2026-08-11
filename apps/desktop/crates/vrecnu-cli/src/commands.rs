@@ -240,8 +240,7 @@ fn engine_failure(err: vrecnu_engine::EngineError) -> CliError {
 }
 
 fn sources() -> Result<(), CliError> {
-    let sources = vrecnu_engine::list_capture_sources()
-        .map_err(engine_failure)?;
+    let sources = vrecnu_engine::list_capture_sources().map_err(engine_failure)?;
     if sources.is_empty() {
         println!("no capture sources found");
         return Ok(());

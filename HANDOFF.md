@@ -1,6 +1,6 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-11
 **Branch:** `fet0.1`
 **Nothing is committed.** All work below is in the working tree.
 
@@ -8,15 +8,23 @@
 
 ## Verified state, right now
 
-Both of these were observed passing, not assumed:
+Observed passing this session, not assumed:
 
 ```
-apps/desktop>  cargo test --workspace -j 4     exit 0, 128 tests passed
-vrecnu>        pnpm test                        5/5 packages, 135 tests passed
-vrecnu>        pnpm lint / typecheck / build    all green
+apps/desktop>  cargo test --workspace -j 4     exit 0, 154 tests passed
 apps/desktop>  cargo clippy -- -D warnings      clean
 apps/desktop>  cargo fmt --all -- --check       clean
 apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
+                 (pass -ManifestPath explicitly; $PSScriptRoot comes back
+                  empty under some invocations and the default resolves to
+                  `\..\Cargo.toml`)
+```
+
+Carried forward from 2026-08-07, not re-run this session:
+
+```
+vrecnu>        pnpm test                        5/5 packages, 135 tests passed
+vrecnu>        pnpm lint / typecheck / build    all green
 ```
 
 Bundle budgets (AGENTS.md §1): **82.4 KB gzip initial JS (55% of 150 KB)**, **86 KB total first
@@ -75,39 +83,97 @@ was proven to actually detect leaks (it fires on `serde`/`thiserror`, which are 
 
 ---
 
-## In progress: M2 (capture → encode)
+## M2 (capture → encode) — video path complete and measured
 
-**Where it stopped:** `crates/vrecnu-capture/src/wgc.rs` — the Windows Graphics Capture
-backend — was just made to compile. It has *not* been run against a real screen.
+The pipeline runs end to end. Every M2 done-criterion was **measured on real hardware**
+(ffmpeg 7.1.1, single 1920x1080 display), not inferred:
 
-Done in M2 so far:
-- `WgcBackend` implementing `CaptureBackend`: monitor + window enumeration, `start`/`stop`,
-  BGRA8 colour format, row-pitch handling.
-- Source ids namespaced `monitor:N` / `window:HWND` so the two cannot be confused.
-- Pacer, buffer pool, FFmpeg argv builder and `-progress` parser were already done in M0 and
-  are unit-tested.
+| Criterion | Result |
+|---|---|
+| 30 s 1080p30 MP4 that plays | `ffprobe`: h264 High, 1920x1080, `avg_frame_rate=30/1`, `duration=30.000000`, `nb_read_frames=900` |
+| …and seeks | `-ss 22` decoded a frame from the fragmented file, exit 0 |
+| `frames_dropped == 0` | 0, on every run including the soak |
+| **Static desktop 10 s → exactly 300 frames** | 300 written, 231 duplicated, 0 dropped |
+| **RSS flat over 5 minutes** | 72.5 MB → 72.6 MB for 65 s, one 8 MB step, then **80.5 MB dead flat for the remaining 234 s** |
+| 5-minute soak output | 9000 frames written, 0 dropped, `elapsed_ms=300001`; file is `duration=300.000000`, `nb_read_frames=9000`, 46.6 MB, seeks at 4 min |
+
+The single 8 MB step in RSS is **one 1080p frame buffer** (8.29 MB) — the sixth pool buffer
+having its pages faulted in the first time demand peaked. It is bounded by the pool, which is
+allocated once and never grows, and nothing moved for the following four minutes. That is the
+property under test: not "never allocates", but "does not climb".
+
+The image was checked visually, not only numerically: a decoded frame is correctly coloured
+and unskewed, which is what proves the row-pitch copy and the BGRA channel order are both
+right. A wrong stride produces a *plausible* file — this is the only check that catches it.
+
+### What was built
+
+- **`vrecnu-encode/src/process.rs`** — `FfmpegProcess`: spawn with `CREATE_NO_WINDOW`, frame
+  writes to stdin, a stderr reader thread feeding `ProgressParser`, a bounded stderr tail,
+  `finish()` (close stdin → EOF → clean flush), `abort()`, and `failure_reason()`. Plus
+  `probe_h264_encoder`, which parses the *name column* of `-encoders` rather than substring
+  matching, so `h264_mf`'s description mentioning "h264" cannot invent an encoder.
+- **`vrecnu-engine/src/pipeline.rs`** — the wiring: capture callback → pooled buffer →
+  bounded channel → pacer tick → `ffmpeg` stdin. Also `list_capture_sources`, `probe_encoder`.
+- **`vrecnu-cli`** — `sources` and `record` are real; `doctor` now probes capture and the
+  encoder instead of printing "not yet implemented". `shell.rs` implements `ShellServices`
+  for real, which strengthens the ADR-006 evidence rather than just satisfying a signature.
+- **`vrecnu-capture`** — `primary_monitor_source_id()`, and `NoFrames` / `SizeChanged` errors.
+
+### Three things the wiring got wrong first, all of which produce a plausible file
+
+Each of these is now a comment at the site and a test:
+
+1. **The clock starts at the first frame, not at `start()`.** WGC takes tens of ms to deliver
+   anything; starting the pacer earlier spends ticks with nothing to send and a "10 second"
+   recording comes out 299 frames long.
+2. **The frame size comes from the first frame, not from the monitor.** `-video_size` is fixed
+   at spawn, and a display that reports 1920x1080 while the surface is 1920x1088 shifts every
+   row. The pool is therefore allocated inside the sink, on the first frame.
+3. **Deadlines are absolute, never `now + interval`.** Folding oversleep back in gives a
+   correct duration with motion running fast.
+
+### Two real FFmpeg bugs found by running it
+
+Both failed at *encoder-open / header-write* time — i.e. after the user believes recording has
+started — and both were invisible to the existing unit tests, which only asserted on strings:
+
+- **`-profile:v high` is rejected by `h264_mf`.** It registers `profile` as a bare int with no
+  named constants. Now `H264Encoder::profile_value()`: `100` for MF, `high` for openh264.
+- **`default_base_is_moof` is not a movflag.** The flag is spelled **`default_base_moof`**;
+  FFmpeg's *description* is "set the default-base-is-moof flag", which is where the wrong
+  spelling came from. The muxer rejected the whole `-movflags` line and nothing was written.
+
+### Known, measured, not yet addressed
+
+- **The encoder is slow to warm, and the loop recovers from it.** `h264_mf` starts around
+  14 fps and takes about a minute to reach 30.0, so short recordings finish slightly late:
+  30 s of frames took 30.17 s, 10 s took 10.23 s. This is *not* cumulative drift — over
+  5 minutes it came back to `300.001 s` for 9000 frames, because deadlines are absolute and
+  the loop catches up once FFmpeg keeps pace. A short clip's motion therefore plays ~0.5 %
+  fast; a long one is exact. Worth revisiting in M9 with `-scenario display_remoting` (an MF
+  tuning mode meant for exactly this workload — verified to run, but one machine is not
+  evidence, so it was left out).
+- **Audio is refused, not ignored.** `--mic`/`--system` return an error naming M3 rather than
+  writing a silent file that looks fine until someone shares it.
 
 ### Next actions, in order
 
-1. **Verify the WGC backend actually delivers frames.** Nothing has exercised it yet. Note
-   `Monitor::from_index` is **1-based and rejects 0** — the id namespace must match.
-2. **Write the capture→encode wiring** in `vrecnu-engine`: capture callback → pooled buffer →
-   pacer tick → writer thread → `ffmpeg` stdin. The pieces exist; nothing joins them.
-3. **Spawn the FFmpeg sidecar.** `live_encode_args()` builds the command line already;
-   `vrecnu-encode` still needs the `std::process::Command` plumbing, stdin writer thread, and
-   stderr `-progress` reader.
-4. **Get an `ffmpeg.exe`** to develop against. M8 fetches a stripped build at package time;
-   for now any local ffmpeg works via `ShellServices::ffmpeg_path()`.
-5. **Implement `vrecnu-cli record`** so M2 is verifiable headlessly. Its done-criteria:
-   a 30 s 1080p30 MP4 that plays *and seeks*, `frames_dropped == 0`, RSS flat over 5 minutes,
-   and **a static desktop for 10 s producing exactly 300 frames** (that last one is the pacer
-   test that catches the silent-wrong-timeline failure).
+1. **M3: WASAPI loopback + mic.** `SilenceFiller` is already written and tested — loopback
+   delivers *nothing* during silence, the same class of bug as the video pacer. Spike the
+   named-pipe audio input early; `live_encode_args` already builds the argv for it, and
+   `LiveEncodeParams::audio_pipe` is the hook. WAV-then-mux is the documented fallback.
+2. **Window capture has not been exercised**, only monitor capture. `window:HWND` ids
+   enumerate correctly; nothing has recorded one. Expect the size to differ from the monitor
+   path and the `SizeChanged` guard to matter on a window that is resized mid-recording.
+3. **Multi-monitor is untested** — this machine has one display. `Monitor::from_index` is
+   **1-based and rejects 0**, and `monitor_source_id` matches that rather than converting.
 
 ### Then M3–M9
 
 | M | Scope | Notes |
 |---|---|---|
-| M3 | WASAPI loopback + mic | `SilenceFiller` already written and tested — loopback delivers *nothing* during silence, same class of bug as the video pacer. Spike the named-pipe audio input early; WAV-then-mux is the documented fallback. |
+| M3 | WASAPI loopback + mic | `SilenceFiller` already written and tested — loopback delivers *nothing* during silence, same class of bug as the video pacer. Spike the named-pipe audio input early; WAV-then-mux is the documented fallback. The encoder argv and `LiveEncodeParams::audio_pipe` are already in place and unit-tested. |
 | M4 | Camera + bubble integrated | `nokhwa` not yet added. Camera must be opened **exactly once** and fanned out. |
 | M5 | Loopback publish server | `tiny_http` not yet added. Port negotiation, Range, token, Host/Origin checks are written and tested as pure logic; only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`. |
 | M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. |
@@ -134,6 +200,13 @@ Done in M2 so far:
    progress output goes to stderr and gets turned into a terminating error.
 6. **`Select-Object -First N` truncates a native command's pipeline** and corrupts
    `$LASTEXITCODE`. Capture to a variable with `Out-String` before filtering.
+7. **PowerShell shows only the first line of a native command's stderr** as the error record,
+   and swallows the rest. A multi-line error message loses everything after line one — which
+   is exactly where FFmpeg's explanation lives. Run the exe through `cmd /c "... > file 2>&1"`
+   when diagnosing, not `cargo run` through the PowerShell pipeline.
+8. **A broken pipe from FFmpeg tells you nothing.** `FfmpegProcess::failure_reason` exists for
+   this: on a write failure it reaps the child and prefers FFmpeg's own exit code and stderr
+   tail over `BrokenPipe`. Both real bugs found this session were invisible until it did.
 
 ---
 

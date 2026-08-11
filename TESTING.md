@@ -3,8 +3,8 @@
 Everything here needs a human, a real screen, or hardware. Automated checks are already
 covered by `pnpm test` / `cargo test` and by CI.
 
-Work top-down: **§1 is the gate for all Phase 2 work**, and §2 catches the Phase 1 regressions
-that matter most.
+Work top-down: **§1 is the gate for all Phase 2 work**, §2 catches the Phase 1 regressions that
+matter most, and §3 is the desktop recorder, which now actually records.
 
 ---
 
@@ -181,32 +181,107 @@ pnpm --filter web preview     # a service worker needs a production build
 
 ---
 
-## 3. Rust desktop — what can be checked today
+## 3. Rust desktop — recording works, and here is how to prove it
 
-M2 onward is not wired up yet, so the CLI reports which milestone owns each missing piece
-rather than pretending to work.
+Needs an `ffmpeg.exe`. Until M8 bundles one, point at any local build:
 
 ```powershell
 cd apps/desktop
+$env:VRECNU_FFMPEG = "C:\ffmpeg\bin\ffmpeg.exe"   # or leave unset to use PATH
+cargo build --release -p vrecnu-cli
+```
+
+### 3.1 Capabilities
+
+```powershell
 cargo run -p vrecnu-cli -- doctor
+cargo run -p vrecnu-cli -- sources
 ```
 
 | Check | Pass |
 |---|---|
-| Prints `engine reachable (session state: Idle)` | yes |
-| Lists ports 47821–47825 | yes |
-| Names M1–M5 for the unimplemented parts | yes |
-| `cargo run -p vrecnu-cli -- record --seconds 5` says M2 owns it | yes — an honest refusal, not a silent empty file |
+| `doctor` prints `engine reachable (session state: Idle)` | yes |
+| `doctor` lists ports 47821–47825 | yes |
+| `doctor` prints `capture backend ready (N sources)` | yes |
+| `doctor` prints an `h264 encoder` line naming `h264_mf` or `libopenh264` | yes |
+| `doctor` still names M3–M5 for the parts that genuinely do not exist | yes |
+| `sources` lists your displays with `*` on the primary, then windows | yes |
+| Display ids are **1-based** (`monitor:1`, never `monitor:0`) | yes |
+
+### 3.2 The pacer test — **run this one first**
+
+This is the check that catches the silent-wrong-timeline failure. Windows Graphics Capture
+delivers a frame only when the screen *changes*, so a static desktop must still produce a full
+timeline or the recording comes out shorter than the session with nothing reporting an error.
+
+**Leave the screen completely still for the whole ten seconds.**
+
+```powershell
+.\target\release\vrecnu-cli.exe record --seconds 10 --out $env:TEMP\pace.mp4
+```
+
+| Check | Pass |
+|---|---|
+| Final line reports **`written 300`** | exactly 300, not 299, not 297 |
+| `dropped 0` | yes |
+| `frames in` is far *lower* than 300 (a still screen delivers very few) | yes — that is the point |
+| `duplicated` makes up the difference | yes — duplication is expected and cheap |
+
+Then confirm the file agrees, rather than trusting our own counter:
+
+```powershell
+ffprobe -v error -select_streams v:0 -count_frames `
+  -show_entries stream=width,height,avg_frame_rate,nb_read_frames,duration `
+  -of default=noprint_wrappers=1 $env:TEMP\pace.mp4
+```
+
+Expect `avg_frame_rate=30/1`, `nb_read_frames=300`, `duration=10.000000`.
+
+### 3.3 A real 30-second recording
+
+```powershell
+.\target\release\vrecnu-cli.exe record --seconds 30 --out $env:TEMP\clip.mp4
+```
+
+| Check | Pass |
+|---|---|
+| `written 900`, `dropped 0` | yes |
+| Plays in VLC / Windows Media Player | yes |
+| **Seek to the middle** | works |
+| **Colours are right — not red/blue swapped** | yes |
+| **No diagonal skew or leaning** | yes — a skew means the row-pitch copy broke |
+| Text is legible, not sheared | yes |
+| Task Manager → memory for `vrecnu-cli` is flat for the whole run | yes (~73–81 MB observed at 1080p) |
+
+A 5-minute soak (`--seconds 300`) is the stronger version: 9000 frames, 0 dropped, working set
+settling at ~80 MB and not moving. One 8 MB step early is expected — it is a single frame
+buffer being paged in — but the number must **stop** climbing. If it keeps rising, the pool is
+being bypassed somewhere and that is the bug the whole design exists to prevent.
+
+The two visual checks are the ones automation cannot do. A wrong stride or a swapped channel
+order produces a file that passes every numeric check and is still wrong.
+
+### 3.4 Things known to be unexercised
+
+Worth a look if you have the hardware:
+
+- **A second monitor.** `--source monitor:2`. Only a single display has been tested.
+- **A window rather than a screen.** `--source window:<HWND>` from `sources`. Then resize it
+  mid-recording — the run should *stop with a resolution-changed error*, not freeze on the
+  last good frame.
+- **Recording something that moves constantly** (video playback). Watch `dropped`; it should
+  stay at 0, and `encoder fps` tells you whether FFmpeg is keeping up.
 
 ### The boundary gate
 
 ```powershell
-./scripts/check-shell-boundary.ps1
+./scripts/check-shell-boundary.ps1 -ManifestPath (Resolve-Path .\Cargo.toml)
 ```
 
 Must print `Shell boundary intact`. **If this ever fails, read `read_this_idiot.md` before
 "fixing" it by deleting the check** — it is the only thing keeping the Tauri decision
-reversible.
+reversible. Pass `-ManifestPath` explicitly: `$PSScriptRoot` comes back empty under some
+invocations and the default silently resolves to `\..\Cargo.toml`.
 
 ---
 
@@ -214,10 +289,10 @@ reversible.
 
 | Area | Blocked on |
 |---|---|
-| Screen capture → MP4 | M2 wiring |
-| System audio / mic | M3 |
+| System audio / mic | M3 — `--mic`/`--system` refuse rather than writing a silent file |
 | Camera in the bubble | M4 |
 | Desktop publish round-trip | M5 + an OAuth client |
 | Desktop UI | M6 |
+| Trim / export on the desktop side | M7 (`render_args` is built and tested; nothing calls it) |
 | Installer, auto-update | M8 + a code-signing certificate |
-| RSS / CPU budgets | M9 |
+| RSS / CPU budgets as *budgets* | M9 — recording RSS is now measurable, idle RSS needs the shell |
