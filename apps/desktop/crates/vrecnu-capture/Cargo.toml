@@ -10,3 +10,4 @@ description = "Screen capture behind a backend trait, plus the frame pacer that 
 vrecnu-types.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+windows-capture = "2"

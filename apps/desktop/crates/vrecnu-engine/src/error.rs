@@ -84,6 +84,21 @@ impl From<EngineError> for AppError {
             )
             .with_hint("Pick another source and start again."),
 
+            // "Nothing arrived at all" is a different failure from "the screen was static":
+            // the pacer handles the second, and reporting it as a capture failure would be a
+            // lie. This arm only fires when the session never produced a single frame.
+            EngineError::Capture(CaptureError::NoFrames { .. }) => AppError::recoverable(
+                ErrorCode::CaptureSourceGone,
+                "vrecnu couldn't get any picture from what you picked.",
+            )
+            .with_hint("Make sure the window isn't minimised, then start again."),
+
+            EngineError::Capture(CaptureError::SizeChanged { .. }) => AppError::recoverable(
+                ErrorCode::CaptureSourceGone,
+                "The screen resolution changed while recording, so recording stopped.",
+            )
+            .with_hint("Start again without changing display settings mid-recording."),
+
             EngineError::Capture(CaptureError::Backpressure { .. }) => AppError::recoverable(
                 ErrorCode::CaptureBackpressure,
                 "Your computer couldn't keep up and some frames were dropped.",

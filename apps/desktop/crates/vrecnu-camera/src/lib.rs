@@ -50,15 +50,9 @@ pub trait CameraSource: Send {
     fn stop(&mut self) -> Result<(), CameraError>;
 }
 
-/// Centre-crops a frame to a square, the shape the circular bubble needs.
-///
-/// Returns the offset and side length in source pixels. Scaling to the bubble's diameter
-/// happens afterwards; doing the crop first avoids distorting a 16:9 sensor into a circle.
-#[must_use]
-pub const fn square_crop(width: u32, height: u32) -> (u32, u32, u32) {
-    let side = if width < height { width } else { height };
-    ((width - side) / 2, (height - side) / 2, side)
-}
+// Re-exported from vrecnu-types so the camera pipeline and the bubble renderer provably
+// use the identical crop.
+pub use vrecnu_types::square_crop;
 
 #[cfg(test)]
 mod tests {

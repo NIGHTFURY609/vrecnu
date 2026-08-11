@@ -21,6 +21,31 @@ pub enum CaptureError {
         /// How far behind the encoder is.
         behind_ms: u64,
     },
+    /// Capture started but the OS never delivered a first frame.
+    ///
+    /// Distinct from a stalled capture mid-session: Windows Graphics Capture is change-driven,
+    /// so *no frames at all* means the session never really started (a source that is minimised,
+    /// occluded on a headless session, or blocked by policy), whereas silence later on is
+    /// normal and the pacer's job.
+    #[error("no frames arrived from the capture source within {after_ms} ms")]
+    NoFrames {
+        /// How long the pipeline waited.
+        after_ms: u64,
+    },
+    /// The source changed resolution mid-recording.
+    ///
+    /// The encoder's `-video_size` is fixed at spawn, so this cannot be absorbed silently.
+    #[error("capture source changed from {from_w}x{from_h} to {to_w}x{to_h} mid-recording")]
+    SizeChanged {
+        /// Width capture started at.
+        from_w: u32,
+        /// Height capture started at.
+        from_h: u32,
+        /// Width it changed to.
+        to_w: u32,
+        /// Height it changed to.
+        to_h: u32,
+    },
     /// The backend delivered something other than BGRA8.
     #[error("unexpected frame format {got:?}, expected BGRA8")]
     UnexpectedFormat {

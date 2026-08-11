@@ -17,6 +17,8 @@
 
 mod error;
 mod machine;
+mod pipeline;
 
 pub use error::EngineError;
 pub use machine::{SessionMachine, TransitionError};
+pub use pipeline::{list_capture_sources, probe_encoder, record, RecordOutcome, RecordRequest};

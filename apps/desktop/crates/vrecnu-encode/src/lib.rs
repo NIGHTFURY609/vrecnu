@@ -21,10 +21,12 @@
 
 mod args;
 mod error;
+mod process;
 mod progress;
 
 pub use args::{live_encode_args, render_args, LiveEncodeParams};
 pub use error::EncodeError;
+pub use process::{probe_h264_encoder, FfmpegProcess};
 pub use progress::{FfmpegProgress, ProgressParser};
 
 /// H.264 encoders vrecnu will use, in preference order (ADR-007).
@@ -56,6 +58,20 @@ impl H264Encoder {
     pub const fn preference_order() -> [Self; 2] {
         [Self::MediaFoundation, Self::OpenH264]
     }
+
+    /// The `-profile:v` value this encoder will actually accept.
+    ///
+    /// Not cosmetic. `h264_mf` exposes `profile` as a bare integer with no named constants
+    /// registered, so the symbolic `high` that every other H.264 encoder takes fails to parse —
+    /// and it fails at *encoder open*, which is after capture has started and the user believes
+    /// they are recording. 100 is H.264's High profile IDC, the number `high` resolves to.
+    #[must_use]
+    pub const fn profile_value(self) -> &'static str {
+        match self {
+            Self::MediaFoundation => "100",
+            Self::OpenH264 => "high",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -68,6 +84,14 @@ mod tests {
             H264Encoder::preference_order()[0],
             H264Encoder::MediaFoundation
         );
+    }
+
+    #[test]
+    fn media_foundation_asks_for_high_profile_by_number() {
+        // `-profile:v high` is rejected by h264_mf at encoder-open time, i.e. after the user
+        // has already started recording. This was a real failure, not a hypothetical one.
+        assert_eq!(H264Encoder::MediaFoundation.profile_value(), "100");
+        assert_eq!(H264Encoder::OpenH264.profile_value(), "high");
     }
 
     #[test]

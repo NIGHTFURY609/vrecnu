@@ -21,14 +21,28 @@
 //! per-pixel alpha — a real circular bubble with a soft shadow and an anti-aliased ring —
 //! with no compositor, no swapchain, and no DWM cooperation.
 
-#![forbid(unsafe_code)]
+// `unsafe` is unavoidable here: this crate is Win32 FFI. It is confined to `window.rs`, every
+// block documents the invariant it relies on, and `unsafe_op_in_unsafe_fn` is denied so an
+// unsafe fn does not become a blanket unsafe block by accident.
+#![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
 mod error;
 mod geometry;
+mod render;
+#[cfg(windows)]
+mod window;
 
 pub use error::BubbleError;
 pub use geometry::{alpha_premultiply, ring_coverage, BubbleLayout};
+pub use render::{render_bubble, to_square, SquareFrame, RING_COLOR};
+#[cfg(windows)]
+pub use window::LayeredBubble;
+
+// Re-exported so the renderer and the camera pipeline provably agree on the crop; a
+// per-crate copy that drifted by one pixel would make the burned-in overlay disagree with
+// what the user saw on screen.
+pub use vrecnu_types::square_crop;
 
 /// Window styles the bubble needs. Recorded as documentation for the M1 spike; the actual
 /// `CreateWindowExW` call arrives with the implementation.

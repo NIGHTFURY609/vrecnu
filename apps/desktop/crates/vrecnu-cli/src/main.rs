@@ -14,6 +14,7 @@
 use std::process::ExitCode;
 
 mod commands;
+mod shell;
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()

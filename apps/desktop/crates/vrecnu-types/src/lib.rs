@@ -75,6 +75,17 @@ impl Size {
     }
 }
 
+/// Centre-crop offsets and side length for fitting a frame into a square.
+///
+/// Lives here because both the camera pipeline and the bubble renderer need the identical
+/// answer: if they disagreed by a pixel, the burned-in overlay would not match what the user
+/// saw floating on screen.
+#[must_use]
+pub const fn square_crop(width: u32, height: u32) -> (u32, u32, u32) {
+    let side = if width < height { width } else { height };
+    ((width - side) / 2, (height - side) / 2, side)
+}
+
 /// A rectangle in screen coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {

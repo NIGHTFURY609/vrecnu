@@ -21,10 +21,14 @@
 mod error;
 mod pacer;
 mod pool;
+#[cfg(windows)]
+mod wgc;
 
 pub use error::CaptureError;
 pub use pacer::{PaceDecision, Pacer};
 pub use pool::{FramePool, PooledFrame};
+#[cfg(windows)]
+pub use wgc::{monitor_source_id, primary_monitor_source_id, window_source_id, WgcBackend};
 
 use vrecnu_types::{CaptureSource, CaptureSourceId, Size};
 

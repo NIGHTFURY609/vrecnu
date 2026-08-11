@@ -116,7 +116,7 @@ pub fn live_encode_args(params: &LiveEncodeParams<'_>) -> Vec<String> {
         "-bufsize".into(),
         (params.video_bitrate * 2).to_string(),
         "-profile:v".into(),
-        "high".into(),
+        params.encoder.profile_value().into(),
         "-g".into(),
         (params.fps * 2).to_string(),
         "-pix_fmt".into(),
@@ -138,7 +138,10 @@ pub fn live_encode_args(params: &LiveEncodeParams<'_>) -> Vec<String> {
 
     args.extend([
         "-movflags".into(),
-        "+frag_keyframe+empty_moov+default_base_is_moof".into(),
+        // `default_base_moof`, not `default_base_is_moof`. FFmpeg's flag is named after the
+        // effect ("set the default-base-is-moof flag"), and the plausible-looking longer spelling
+        // is rejected by the muxer at header-write time — i.e. after recording has begun.
+        "+frag_keyframe+empty_moov+default_base_moof".into(),
         "-frag_duration".into(),
         "2000000".into(),
         "-y".into(),
@@ -217,7 +220,7 @@ pub fn render_args(
                 "-b:v".into(),
                 video_bitrate.to_string(),
                 "-profile:v".into(),
-                "high".into(),
+                encoder.profile_value().into(),
                 "-pix_fmt".into(),
                 "nv12".into(),
             ]);
@@ -279,9 +282,12 @@ mod tests {
         let args = live_encode_args(&params(&out, None, None));
         let text = joined(&args);
         assert!(
-            text.contains("+frag_keyframe+empty_moov+default_base_is_moof"),
+            text.contains("+frag_keyframe+empty_moov+default_base_moof"),
             "{text}"
         );
+        // Spelled `default_base_is_moof`, this whole line is rejected by the muxer and the
+        // recording never starts. Verified against ffmpeg 7.1.
+        assert!(!text.contains("default_base_is_moof"), "{text}");
         assert!(text.contains("-frag_duration 2000000"), "{text}");
     }
 
@@ -346,6 +352,41 @@ mod tests {
             !text.contains("libx264"),
             "libx264 cannot exist in an LGPL build"
         );
+    }
+
+    #[test]
+    fn the_profile_is_written_in_the_dialect_the_chosen_encoder_speaks() {
+        // `-profile:v high` makes h264_mf fail at encoder-open, which happens *after* capture
+        // has started. Observed against a real ffmpeg, not inferred from documentation.
+        let out = PathBuf::from("raw.mp4");
+        let mut mf = params(&out, None, None);
+        mf.encoder = H264Encoder::MediaFoundation;
+        assert!(joined(&live_encode_args(&mf)).contains("-profile:v 100"));
+
+        let mut openh264 = params(&out, None, None);
+        openh264.encoder = H264Encoder::OpenH264;
+        assert!(joined(&live_encode_args(&openh264)).contains("-profile:v high"));
+    }
+
+    #[test]
+    fn a_re_encoding_render_uses_the_same_profile_dialect() {
+        // The live path and the render path pick encoders independently; fixing only one leaves
+        // the identical failure waiting in export.
+        let edit = EditSpec {
+            video: VideoAdjust {
+                brightness: 0.2,
+                ..VideoAdjust::default()
+            },
+            ..EditSpec::default()
+        };
+        let args = render_args(
+            Path::new("in.mp4"),
+            Path::new("out.mp4"),
+            &edit,
+            H264Encoder::MediaFoundation,
+            6_000_000,
+        );
+        assert!(joined(&args).contains("-profile:v 100"), "{}", joined(&args));
     }
 
     #[test]
