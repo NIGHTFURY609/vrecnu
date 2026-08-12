@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod audio_pipeline;
 mod error;
 mod machine;
 mod pipeline;

@@ -31,6 +31,9 @@ pub enum EngineError {
     /// The publish server failed.
     #[error(transparent)]
     Publish(#[from] PublishError),
+    /// The named pipe carrying mixed audio to FFmpeg failed.
+    #[error(transparent)]
+    Pipe(#[from] vrecnu_namedpipe::PipeError),
     /// The requested action is not legal in the current state.
     #[error("cannot {action} while {state:?}")]
     IllegalTransition {
@@ -193,6 +196,14 @@ impl From<EngineError> for AppError {
 
             EngineError::Publish(_) => {
                 AppError::recoverable(ErrorCode::PublishPageError, "Uploading to Drive failed.")
+            }
+
+            // The pipe is plumbing, not a device — from the user's chair a broken audio pipe
+            // and a broken audio device fail the same way, so it gets the same message and the
+            // same "keep going without audio" hint rather than inventing a new error surface.
+            EngineError::Pipe(_) => {
+                AppError::recoverable(ErrorCode::Internal, "Audio couldn't be recorded.")
+                    .with_hint("You can record without audio, or try again.")
             }
 
             EngineError::InsufficientDisk {

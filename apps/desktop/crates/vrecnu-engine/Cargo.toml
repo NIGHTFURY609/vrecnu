@@ -16,6 +16,7 @@ vrecnu-audio.workspace = true
 vrecnu-camera.workspace = true
 vrecnu-encode.workspace = true
 vrecnu-publish-server.workspace = true
+vrecnu-namedpipe.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 crossbeam-channel.workspace = true
