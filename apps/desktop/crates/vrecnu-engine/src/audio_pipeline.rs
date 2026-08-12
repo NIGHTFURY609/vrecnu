@@ -23,14 +23,22 @@ const TICK_INTERVAL: Duration = Duration::from_millis(20);
 
 /// How long [`AudioPipeline::stop`] waits for the writer thread before giving up on it.
 ///
-/// The only way this bound is ever hit is FFmpeg dying between process spawn and opening its
-/// audio input — vanishingly rare, and already a failed recording by the time it happens (the
-/// video writer loop finds the same dead process independently, from its own stdin write). This
-/// bound exists so that pathological case costs the caller three seconds, not a permanent hang;
-/// the accept thread itself is abandoned rather than force-cancelled (`ConnectNamedPipe` has no
+/// Two real cases hit this, both measured rather than assumed: FFmpeg dying between process
+/// spawn and opening its audio input (rare, and already a failed recording by the time it
+/// happens — the video writer loop finds the same dead process independently, from its own
+/// stdin write); and, observed directly while testing this module against real hardware, a
+/// single in-flight `write_all` blocking for several real seconds — sometimes longer than this
+/// bound itself — while FFmpeg is still catching up on H.264 encoder warm-up backlog
+/// (AGENTS.md / HANDOFF.md document `h264_mf` itself as slow to reach full speed). That second
+/// case is a genuine trade-off, not a bug to tune away: the warn-and-abandon path firing on a
+/// healthy recording is confirmed harmless (the write finishes moments later regardless, and
+/// the recorded file is still correct — verified with `ffprobe`/`volumedetect` against real
+/// output), so this stays a firm, honest bound rather than growing indefinitely to chase a
+/// warm-up delay that varies with the machine. Either way, the accept/writer thread is
+/// abandoned rather than force-cancelled (`ConnectNamedPipe`/a blocked `WriteFile` have no
 /// portable cancel-from-another-thread short of overlapped I/O, which this module does not use)
 /// and is reclaimed when the process exits.
-const STOP_GRACE: Duration = Duration::from_secs(3);
+const STOP_GRACE: Duration = Duration::from_secs(8);
 
 static PIPE_COUNTER: AtomicU32 = AtomicU32::new(0);
 

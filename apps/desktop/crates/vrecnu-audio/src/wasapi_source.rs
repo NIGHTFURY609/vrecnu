@@ -2,10 +2,14 @@
 //!
 //! Loopback capture is a Windows quirk, not a separate API: `AUDCLNT_STREAMFLAGS_LOOPBACK` is
 //! only valid on a **render** endpoint, so "capturing system audio" means opening the default
-//! *output* device and initializing it for capture anyway. The `wasapi` crate's convention
-//! (confirmed against its own `examples/record.rs`) is that passing `Direction::Render`
-//! straight through to both device selection and `initialize_client` is what turns that render
-//! device into a loopback capture source — there is no separate loopback flag to set by hand.
+//! *output* device and initializing it for capture anyway. The `wasapi` crate sets that flag
+//! for you, but only from a **mismatch**: open the device with `Direction::Render` (see
+//! [`Kind::device_direction`]) and then request `Direction::Capture` from `initialize_client`
+//! (see [`Kind::client_direction`]) — the crate reads "render device, capture client" as "you
+//! want loopback" and sets the flag itself. Passing `Render` to both, which reads more
+//! naturally, was tried first and failed against real hardware with
+//! `AUDCLNT_E_UNSUPPORTED_FORMAT`: the flag never got set, so the client silently attempted a
+//! normal render-direction initialization instead of a capture one.
 //!
 //! All the actual WASAPI/COM work happens on one dedicated thread per source, spawned by
 //! `start()`. `start()` blocks until that thread confirms the device opened (or reports why it
@@ -58,11 +62,26 @@ enum Kind {
 }
 
 impl Kind {
-    const fn direction(self) -> Direction {
+    /// Which endpoint to open. Loopback captures from the default *output* device — there is no
+    /// separate "loopback device"; it's the render endpoint, opened anyway.
+    const fn device_direction(self) -> Direction {
         match self {
             Self::Mic => Direction::Capture,
             Self::Loopback => Direction::Render,
         }
+    }
+
+    /// The direction passed to `initialize_client`, which is **not** the same as
+    /// [`Self::device_direction`] for loopback — confirmed against the `wasapi` crate's own
+    /// source (`api.rs`, `initialize_client`): the loopback stream flag is set precisely when
+    /// the device's own direction is `Render` but the *client* direction requested here is
+    /// `Capture`, i.e. loopback is a deliberate mismatch, not a matching pair. Passing `Render`
+    /// for both (the mismatch this comment warns about) was tried first and failed for real,
+    /// against real hardware, with `AUDCLNT_E_UNSUPPORTED_FORMAT` (`0x88890003`) — the loopback
+    /// flag never got set, so the client silently tried a normal render-direction
+    /// initialization instead of a capture one.
+    const fn client_direction(self) -> Direction {
+        Direction::Capture
     }
 
     fn no_device_error(self) -> AudioError {
@@ -270,11 +289,12 @@ type OpenedDevice = (
 );
 
 fn open_device(kind: Kind) -> Result<OpenedDevice, AudioError> {
-    let direction = kind.direction();
+    let device_direction = kind.device_direction();
+    let client_direction = kind.client_direction();
 
     let enumerator = DeviceEnumerator::new().map_err(|err| AudioError::Backend(Box::new(err)))?;
     let device = enumerator
-        .get_default_device(&direction)
+        .get_default_device(&device_direction)
         .map_err(|_| kind.no_device_error())?;
     let mut audio_client = device
         .get_iaudioclient()
@@ -295,7 +315,7 @@ fn open_device(kind: Kind) -> Result<OpenedDevice, AudioError> {
         buffer_duration_hns: min_period,
     };
     audio_client
-        .initialize_client(&mix_format, &direction, &mode)
+        .initialize_client(&mix_format, &client_direction, &mode)
         .map_err(|_| kind.unsupported_error(&source_format))?;
 
     let event_handle = audio_client

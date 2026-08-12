@@ -468,6 +468,18 @@ fn run_until_stopped(
         });
     }
 
+    // Audio's EOF has to land *before* we wait for FFmpeg to exit, not after. `ffmpeg.finish()`
+    // only closes the video stdin; a muxer reading two live inputs has no reason to finalize and
+    // exit while the audio pipe is still open and being actively written to. Stopping it here —
+    // flush, disconnect, close, all inside `AudioPipeline::stop` — is audio's side of exactly
+    // the same "close rather than kill" finalization `ffmpeg.finish()` already does for video.
+    // Found by running it: without this, `finish()` never returned — not a deadlock inside
+    // FFmpeg or this process, just two inputs each waiting on something only the other one
+    // could have provided.
+    if let Some(audio) = audio.as_mut() {
+        audio.stop();
+    }
+
     // Closing stdin rather than killing: FFmpeg flushes the final fragment and exits 0. Killing
     // here would cost the user the last couple of seconds of what they just recorded.
     let progress = ffmpeg.finish()?;
