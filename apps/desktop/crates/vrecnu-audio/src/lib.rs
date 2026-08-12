@@ -21,7 +21,7 @@ pub use mixer::{Mixer, MixerSink, MixerSinks, MixerSources};
 pub use resample::{to_48k_stereo_s16, SampleKind, SourceFormat};
 pub use silence::SilenceFiller;
 #[cfg(windows)]
-pub use wasapi_source::{WasapiLoopbackSource, WasapiMicSource};
+pub use wasapi_source::{default_devices_available, WasapiLoopbackSource, WasapiMicSource};
 
 /// Everything downstream assumes this format, so conversion happens at the source.
 pub const SAMPLE_RATE_HZ: u32 = 48_000;

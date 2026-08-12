@@ -168,15 +168,38 @@ pub fn start(selection: AudioSelection) -> Result<Option<AudioPipeline>, EngineE
     imp::start(selection)
 }
 
+/// Whether a default microphone and a default output device (loopback's source) exist, for a
+/// capability report like `doctor` — cheap: no stream is opened, only endpoints are enumerated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioProbe {
+    /// A default microphone was found.
+    pub mic: bool,
+    /// A default output device (usable for system-audio loopback) was found.
+    pub system: bool,
+}
+
+/// See [`AudioProbe`].
+#[must_use]
+pub fn probe() -> AudioProbe {
+    imp::probe()
+}
+
 #[cfg(windows)]
 mod imp {
     use vrecnu_audio::{AudioSource, Mixer, MixerSources};
     use vrecnu_namedpipe::NamedPipeServer;
 
-    use super::{unique_pipe_name, AudioPipeline, AudioSelection, EngineError, TICK_INTERVAL};
+    use super::{
+        unique_pipe_name, AudioPipeline, AudioProbe, AudioSelection, EngineError, TICK_INTERVAL,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc};
     use std::time::Instant;
+
+    pub(super) fn probe() -> AudioProbe {
+        let (mic, system) = vrecnu_audio::default_devices_available();
+        AudioProbe { mic, system }
+    }
 
     /// Erases which concrete `AudioSource` a slot holds, so [`AudioPipeline`] can hold a mic and
     /// a loopback source in the same `Vec` without a shell-visible enum.
@@ -285,12 +308,19 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
-    use super::{AudioPipeline, AudioSelection, EngineError};
+    use super::{AudioPipeline, AudioProbe, AudioSelection, EngineError};
 
     pub(super) fn start(_selection: AudioSelection) -> Result<Option<AudioPipeline>, EngineError> {
         Err(EngineError::Audio(vrecnu_audio::AudioError::Backend(
             "audio capture is only implemented on Windows".into(),
         )))
+    }
+
+    pub(super) fn probe() -> AudioProbe {
+        AudioProbe {
+            mic: false,
+            system: false,
+        }
     }
 
     pub(crate) trait AudioSourceHandle: Send {

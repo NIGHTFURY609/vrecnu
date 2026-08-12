@@ -28,6 +28,29 @@ use crate::{AudioError, AudioSource, PcmSink, SampleKind, SourceFormat};
 /// packets on a device with a longer natural period.
 const EVENT_TIMEOUT_MS: u32 = 200;
 
+/// Reports whether a default microphone and a default output device (loopback's source) exist.
+///
+/// For a capability check like `doctor` — cheap and non-invasive on purpose: only enumerates
+/// default endpoints, never opens an `IAudioClient` or a stream, unlike a real `start()`.
+#[must_use]
+pub fn default_devices_available() -> (bool, bool) {
+    // COM must be initialized on whichever thread calls this — `doctor` runs on the CLI's main
+    // thread, which has never called `initialize_mta` the way each capture thread does in
+    // `capture_loop`. Skipping this would make every device look absent regardless of what's
+    // actually plugged in, for a reason that has nothing to do with the hardware.
+    if wasapi::initialize_mta().ok().is_err() {
+        return (false, false);
+    }
+    let result = DeviceEnumerator::new().map_or((false, false), |enumerator| {
+        (
+            enumerator.get_default_device(&Direction::Capture).is_ok(),
+            enumerator.get_default_device(&Direction::Render).is_ok(),
+        )
+    });
+    wasapi::deinitialize();
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Mic,
