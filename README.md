@@ -7,6 +7,8 @@ any server we run.
 Four invariants govern every decision: **lightweight**, **a no-install path always exists**
 (the PWA), **bring-your-own-storage**, **privacy**.
 
+
+
 ---
 
 ## Where the project stands
