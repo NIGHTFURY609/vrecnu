@@ -204,7 +204,8 @@ cargo run -p vrecnu-cli -- sources
 | `doctor` lists ports 47821–47825 | yes |
 | `doctor` prints `capture backend ready (N sources)` | yes |
 | `doctor` prints an `h264 encoder` line naming `h264_mf` or `libopenh264` | yes |
-| `doctor` still names M3–M5 for the parts that genuinely do not exist | yes |
+| `doctor` prints `audio backend     mic ready, system ready` (or `unavailable` per device) | yes |
+| `doctor` still names M4–M5 for the parts that genuinely do not exist | yes |
 | `sources` lists your displays with `*` on the primary, then windows | yes |
 | Display ids are **1-based** (`monitor:1`, never `monitor:0`) | yes |
 
@@ -261,7 +262,26 @@ being bypassed somewhere and that is the bug the whole design exists to prevent.
 The two visual checks are the ones automation cannot do. A wrong stride or a swapped channel
 order produces a file that passes every numeric check and is still wrong.
 
-### 3.4 Things known to be unexercised
+### 3.4 Audio — mic, system, and both
+
+```powershell
+.\target\release\vrecnu-cli.exe record --seconds 5 --mic --out $env:TEMP\mic.mp4
+.\target\release\vrecnu-cli.exe record --seconds 5 --system --out $env:TEMP\sys.mp4
+.\target\release\vrecnu-cli.exe record --seconds 5 --mic --system --out $env:TEMP\both.mp4
+```
+
+For `--system`, play something with clear audio for the whole recording (a YouTube video, a
+tone) — WASAPI loopback correctly reports silence when nothing is playing, and a silent
+`--system` test proves nothing either way.
+
+| Check | Pass |
+|---|---|
+| Each file has an AAC stream, `48000` Hz, `2` channels | `ffprobe -show_entries stream=codec_name,sample_rate,channels` |
+| The audio isn't silence | `ffmpeg -i <file> -af volumedetect -f null -` → `mean_volume` well above the ~-91dB digital-silence floor (real captures on this session ran -30 to -45dB) |
+| Video and audio durations match | `ffprobe -show_entries format=duration` on the whole file, not per-stream |
+| The recording still finishes (may take longer than the requested duration) | yes — a few extra seconds during FFmpeg's encoder warm-up is expected, see HANDOFF.md's M2/M3 known-issues; a recording that never finishes is not |
+
+### 3.5 Things known to be unexercised
 
 Worth a look if you have the hardware:
 
@@ -271,6 +291,9 @@ Worth a look if you have the hardware:
   last good frame.
 - **Recording something that moves constantly** (video playback). Watch `dropped`; it should
   stay at 0, and `encoder fps` tells you whether FFmpeg is keeping up.
+- **A USB/Bluetooth mic or headset disconnecting mid-recording.** `AudioError::
+  DeviceDisconnected` exists but hot-swap recovery was explicitly scoped out — expect the
+  recording to end with an error, not silently continue.
 
 ### The boundary gate
 
@@ -289,7 +312,6 @@ invocations and the default silently resolves to `\..\Cargo.toml`.
 
 | Area | Blocked on |
 |---|---|
-| System audio / mic | M3 — `--mic`/`--system` refuse rather than writing a silent file |
 | Camera in the bubble | M4 |
 | Desktop publish round-trip | M5 + an OAuth client |
 | Desktop UI | M6 |
