@@ -10,10 +10,18 @@
 #![warn(missing_docs)]
 
 mod error;
+mod mixer;
+mod resample;
 mod silence;
+#[cfg(windows)]
+mod wasapi_source;
 
 pub use error::AudioError;
+pub use mixer::{Mixer, MixerSink, MixerSinks, MixerSources};
+pub use resample::{to_48k_stereo_s16, SampleKind, SourceFormat};
 pub use silence::SilenceFiller;
+#[cfg(windows)]
+pub use wasapi_source::{WasapiLoopbackSource, WasapiMicSource};
 
 /// Everything downstream assumes this format, so conversion happens at the source.
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
