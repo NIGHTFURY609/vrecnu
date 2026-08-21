@@ -97,3 +97,5 @@ around it.
 Conventional-commit style (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). Branch off
 `main`; don't push to `main` unless told. Keep commits scoped; update `ARCHITECTURE.md` and
 these guidance files when a decision changes.
+
+use sonnet for sub agents
