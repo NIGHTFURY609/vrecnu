@@ -1,8 +1,8 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-08-11
-**Branch:** `fet0.1`
-**Nothing is committed.** All work below is in the working tree.
+**Last updated:** 2026-08-13
+**Branch:** `feat/m3-wasapi-audio` (off `main`; M0–M2 landed on `main` first)
+**Committed.** M3 (this session's work) is committed on its branch, not yet merged.
 
 ---
 
@@ -11,7 +11,7 @@
 Observed passing this session, not assumed:
 
 ```
-apps/desktop>  cargo test --workspace -j 4     exit 0, 154 tests passed
+apps/desktop>  cargo test --workspace -j 4     exit 0, 175 tests passed
 apps/desktop>  cargo clippy -- -D warnings      clean
 apps/desktop>  cargo fmt --all -- --check       clean
 apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
@@ -154,26 +154,94 @@ started — and both were invisible to the existing unit tests, which only asser
   fast; a long one is exact. Worth revisiting in M9 with `-scenario display_remoting` (an MF
   tuning mode meant for exactly this workload — verified to run, but one machine is not
   evidence, so it was left out).
-- **Audio is refused, not ignored.** `--mic`/`--system` return an error naming M3 rather than
-  writing a silent file that looks fine until someone shares it.
+- **Audio makes the warm-up backlog worse, not just present.** The extra WASAPI/writer threads
+  compete with `h264_mf` for CPU during exactly the window it's already slow, so a short
+  `--mic`/`--system` recording's `ffmpeg.finish()` can take several **seconds** longer than the
+  same recording without audio — still correct on completion (see M3), just slower to get
+  there. Same root cause as the row above, not a new one.
+
+---
+
+## M3 (WASAPI loopback + mic) — audio path complete and measured
+
+`--mic`, `--system`, and both together all produce a valid MP4 — **measured against real
+hardware** (real microphone, a real 440 Hz tone played through the default output device for
+loopback), not inferred from unit tests alone:
+
+| Criterion | Result |
+|---|---|
+| `--system` produces h264 + AAC, 48 kHz stereo | `ffprobe`: both streams present, `sample_rate=48000`, `channels=2` |
+| …and the tone is actually audible, not silence | `volumedetect`: `mean_volume=-32.9dB`, `max_volume=-20.2dB` (digital silence floors at ~-91dB) |
+| `--mic` produces the same, with real ambient/room audio | `mean_volume=-44.3dB`, `max_volume=-27.3dB` |
+| `--mic --system` mixes both into one stream | `mean_volume=-43.0dB`, `max_volume=-17.3dB` — louder peak than either alone, consistent with the two sources summing |
+| All three configurations complete and produce a playable file | confirmed on every run this session, after the two fixes below |
+
+### What was built
+
+- **`vrecnu-audio`** — `resample.rs` (linear resample to 48 kHz stereo `s16le`, mono→stereo
+  duplication, >2ch truncation, `f32`/`s16` conversion — pure, unit-tested, no hardware
+  needed), `mixer.rs` (combines up to two `SilenceFiller`-backed sources; both fillers always
+  tick on the same `elapsed_ns`, which guarantees equal-length output so summing two sources
+  never has to guess about a length mismatch), `wasapi_source.rs` (`WasapiMicSource` /
+  `WasapiLoopbackSource` on the `wasapi` crate, one dedicated thread per source).
+- **`vrecnu-namedpipe`** (new crate) — a minimal Win32 named-pipe server. Isolates the
+  unavoidable `unsafe` FFI the same way `vrecnu-bubble-win32` does: confined to one file,
+  `unsafe_op_in_unsafe_fn` denied, safe public API. Registered in
+  `check-shell-boundary.ps1`'s crate list.
+- **`vrecnu-engine/src/audio_pipeline.rs`** — `AudioPipeline`: starts WASAPI source(s), the
+  mixer, and the named pipe as one RAII unit. `Drop` stops everything, so `run_until_stopped`'s
+  several `?`-driven exit paths need no manual cleanup — just a variable declared before
+  anything fallible. `RecordRequest` gained `mic`/`system` bools.
+- **`vrecnu-cli`** — `--mic`/`--system` work for real now (the M3 refusal is gone); `doctor`
+  reports real device availability via a cheap WASAPI enumeration probe (confirmed live: `audio
+  backend     mic ready, system ready`).
+
+### Two real bugs found only by recording for real
+
+Both were invisible to every unit test — the mixer/pipe round-trip tests were green the whole
+time. Found by actually running `--system`/`--mic` against real hardware, the M2 pattern
+repeating exactly:
+
+1. **WASAPI loopback direction was backwards.** `initialize_client` needs a *mismatched*
+   direction from the device to get `AUDCLNT_STREAMFLAGS_LOOPBACK` set — render device, capture
+   client — confirmed against the `wasapi` crate's own source. Passing `Render` for both, which
+   reads more naturally, is what `--system` shipped with first and it failed on real hardware
+   with `AUDCLNT_E_UNSUPPORTED_FORMAT` every time.
+2. **Shutdown order deadlocked FFmpeg.** `ffmpeg.finish()` closes the video stdin and waits for
+   the process to exit, but the audio named pipe was left open and actively written to until
+   `AudioPipeline` dropped — which happens *after* `run_until_stopped` returns, which is after
+   `finish()` was supposed to already have returned. A muxer reading two live inputs has no
+   reason to finalize while one of them is still open. Fixed by stopping audio (flush,
+   disconnect, close — the audio-side equivalent of closing stdin) *before* calling `finish()`,
+   not after. Without this, `finish()` never returned — not a deadlock inside FFmpeg or this
+   process, just two inputs each waiting on something only the other one could have provided.
+
+### Known, measured, not yet addressed
+
+- **Audio/video CPU contention compounds `h264_mf`'s warm-up slowness** (already noted under
+  M2's own known-issues, since it's the same underlying cause). `AudioPipeline::stop`'s
+  `STOP_GRACE` bound (8s) is sometimes not enough during a slow warm-up — confirmed harmless
+  when it fires (the write finishes moments later regardless, and the recorded file is still
+  correct — verified with `ffprobe`/`volumedetect`), so the bound stays firm rather than
+  growing indefinitely to chase a delay that varies by machine.
+- **`ConnectNamedPipe`/a blocked `WriteFile` have no portable cancel-from-another-thread short
+  of overlapped I/O**, which `vrecnu-namedpipe` does not use. The one pathological case this
+  matters for — FFmpeg dying between spawn and opening its audio input — is bounded by
+  `STOP_GRACE` rather than fixed properly; see that constant's doc comment for the trade-off.
 
 ### Next actions, in order
 
-1. **M3: WASAPI loopback + mic.** `SilenceFiller` is already written and tested — loopback
-   delivers *nothing* during silence, the same class of bug as the video pacer. Spike the
-   named-pipe audio input early; `live_encode_args` already builds the argv for it, and
-   `LiveEncodeParams::audio_pipe` is the hook. WAV-then-mux is the documented fallback.
-2. **Window capture has not been exercised**, only monitor capture. `window:HWND` ids
+1. **Window capture has not been exercised**, only monitor capture. `window:HWND` ids
    enumerate correctly; nothing has recorded one. Expect the size to differ from the monitor
    path and the `SizeChanged` guard to matter on a window that is resized mid-recording.
-3. **Multi-monitor is untested** — this machine has one display. `Monitor::from_index` is
+2. **Multi-monitor is untested** — this machine has one display. `Monitor::from_index` is
    **1-based and rejects 0**, and `monitor_source_id` matches that rather than converting.
+3. **M4: camera + bubble.** See the table below.
 
-### Then M3–M9
+### Then M4–M9
 
 | M | Scope | Notes |
 |---|---|---|
-| M3 | WASAPI loopback + mic | `SilenceFiller` already written and tested — loopback delivers *nothing* during silence, same class of bug as the video pacer. Spike the named-pipe audio input early; WAV-then-mux is the documented fallback. The encoder argv and `LiveEncodeParams::audio_pipe` are already in place and unit-tested. |
 | M4 | Camera + bubble integrated | `nokhwa` not yet added. Camera must be opened **exactly once** and fanned out. |
 | M5 | Loopback publish server | `tiny_http` not yet added. Port negotiation, Range, token, Host/Origin checks are written and tested as pure logic; only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`. |
 | M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. |

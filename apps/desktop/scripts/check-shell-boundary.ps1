@@ -33,7 +33,8 @@ $ErrorActionPreference = 'Continue'
 $forbidden = @('tauri', 'tao', 'wry', 'webview2-com')
 $shellFreeCrates = @('vrecnu-cli', 'vrecnu-engine', 'vrecnu-capture', 'vrecnu-audio',
                      'vrecnu-camera', 'vrecnu-encode', 'vrecnu-publish-server',
-                     'vrecnu-bubble-win32', 'vrecnu-shell-api', 'vrecnu-types')
+                     'vrecnu-bubble-win32', 'vrecnu-namedpipe', 'vrecnu-shell-api',
+                     'vrecnu-types')
 
 $failed = $false
 

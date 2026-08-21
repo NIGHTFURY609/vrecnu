@@ -29,6 +29,7 @@ vrecnu-camera = { path = "crates/vrecnu-camera" }
 vrecnu-encode = { path = "crates/vrecnu-encode" }
 vrecnu-publish-server = { path = "crates/vrecnu-publish-server" }
 vrecnu-bubble-win32 = { path = "crates/vrecnu-bubble-win32" }
+vrecnu-namedpipe = { path = "crates/vrecnu-namedpipe" }
 vrecnu-engine = { path = "crates/vrecnu-engine" }
 
 # Tuned for the ≤15 MB exe budget in AGENTS.md §1. `panic = "abort"` also means a panicking

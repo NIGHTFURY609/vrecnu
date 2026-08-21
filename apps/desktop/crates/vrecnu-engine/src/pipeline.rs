@@ -33,6 +33,7 @@ use vrecnu_capture::{
 use vrecnu_encode::{live_encode_args, FfmpegProcess, LiveEncodeParams};
 use vrecnu_types::{CaptureSource, CaptureSourceId, CaptureStats, Size};
 
+use crate::audio_pipeline::{self, AudioPipeline, AudioSelection};
 use crate::EngineError;
 
 /// Buffers reserved for frames in flight.
@@ -70,6 +71,10 @@ pub struct RecordRequest {
     pub ffmpeg: PathBuf,
     /// Stop after this long. `None` records until the stop flag is set.
     pub duration: Option<Duration>,
+    /// Capture the microphone.
+    pub mic: bool,
+    /// Capture system audio via WASAPI loopback.
+    pub system: bool,
 }
 
 impl RecordRequest {
@@ -83,6 +88,8 @@ impl RecordRequest {
             output,
             ffmpeg,
             duration: None,
+            mic: false,
+            system: false,
         }
     }
 }
@@ -347,12 +354,25 @@ fn run_until_stopped(
     let size = first.size;
     let mut current = Some(first.buffer);
 
+    // Declared before anything fallible below: `AudioPipeline`'s `Drop` stops WASAPI capture,
+    // the writer thread, and the pipe on every exit from this function — success, an `?`-early
+    // return from spawning FFmpeg, all of it — with no manual cleanup threaded through each
+    // return point. See `audio_pipeline::AudioPipeline::stop`'s doc comment.
+    //
+    // Started before FFmpeg, not after: the pipe has to exist for FFmpeg's `-i` to open, and a
+    // bad device should be reported before a recording has even begun rather than partway in.
+    let mut audio = audio_pipeline::start(AudioSelection {
+        mic: request.mic,
+        system: request.system,
+    })?;
+    let audio_pipe_path = audio.as_ref().map(AudioPipeline::pipe_path);
+
     let args = live_encode_args(&LiveEncodeParams {
         size,
         fps: request.fps,
         video_bitrate: request.video_bitrate,
         encoder,
-        audio_pipe: None,
+        audio_pipe: audio_pipe_path.as_deref(),
         camera_pipe: None,
         camera_size: None,
         output: &request.output,
@@ -361,13 +381,18 @@ fn run_until_stopped(
         size = format!("{}x{}", size.width, size.height),
         fps = request.fps,
         encoder = encoder.ffmpeg_name(),
+        audio = audio_pipe_path.is_some(),
         "starting live encode"
     );
     let mut ffmpeg = FfmpegProcess::spawn(&request.ffmpeg, &args)?;
 
     // Everything above happened while frames were already being captured, so the clock starts
-    // here — the moment the first tick can actually be written.
+    // here — the moment the first tick can actually be written. Audio's clock is this same
+    // instant, not one it measures itself — see the audio_pipeline module doc comment for why.
     let started = Instant::now();
+    if let Some(audio) = audio.as_mut() {
+        audio.begin(started);
+    }
     let mut pacer = Pacer::new(request.fps, 0);
     let max_frames = request
         .duration
@@ -443,6 +468,18 @@ fn run_until_stopped(
         });
     }
 
+    // Audio's EOF has to land *before* we wait for FFmpeg to exit, not after. `ffmpeg.finish()`
+    // only closes the video stdin; a muxer reading two live inputs has no reason to finalize and
+    // exit while the audio pipe is still open and being actively written to. Stopping it here —
+    // flush, disconnect, close, all inside `AudioPipeline::stop` — is audio's side of exactly
+    // the same "close rather than kill" finalization `ffmpeg.finish()` already does for video.
+    // Found by running it: without this, `finish()` never returned — not a deadlock inside
+    // FFmpeg or this process, just two inputs each waiting on something only the other one
+    // could have provided.
+    if let Some(audio) = audio.as_mut() {
+        audio.stop();
+    }
+
     // Closing stdin rather than killing: FFmpeg flushes the final fragment and exits 0. Killing
     // here would cost the user the last couple of seconds of what they just recorded.
     let progress = ffmpeg.finish()?;
@@ -485,7 +522,7 @@ fn collect_stats(
 /// A pure `thread::sleep` misses a 33 ms cadence often enough to matter even with the
 /// high-resolution timer std uses on Windows, and the miss is not self-correcting when it lands
 /// on the wrong side of a frame boundary.
-fn sleep_until(target: Instant) {
+pub(crate) fn sleep_until(target: Instant) {
     loop {
         let now = Instant::now();
         if now >= target {

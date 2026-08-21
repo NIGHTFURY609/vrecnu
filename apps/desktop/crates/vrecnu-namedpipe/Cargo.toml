@@ -1,0 +1,20 @@
+[package]
+name = "vrecnu-namedpipe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "A minimal Win32 named-pipe server: feeds mixed audio to FFmpeg's second -i input without touching disk."
+
+[dependencies]
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# Only the Win32 surfaces this crate actually touches, same discipline as vrecnu-bubble-win32.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+] }

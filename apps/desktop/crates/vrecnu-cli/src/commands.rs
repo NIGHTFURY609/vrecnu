@@ -263,14 +263,6 @@ fn sources() -> Result<(), CliError> {
 }
 
 fn record(options: &RecordOptions) -> Result<(), CliError> {
-    if options.mic || options.system {
-        // Better to refuse than to write a silent file the user only discovers is silent after
-        // they have shared it.
-        return Err(CliError::Engine(
-            "audio capture lands in M3; re-run without --mic/--system".into(),
-        ));
-    }
-
     let shell = CliShell;
     let ffmpeg = shell
         .ffmpeg_path()
@@ -283,11 +275,21 @@ fn record(options: &RecordOptions) -> Result<(), CliError> {
         output: PathBuf::from(&options.out),
         ffmpeg,
         duration: Some(Duration::from_secs(u64::from(options.seconds))),
+        mic: options.mic,
+        system: options.system,
     };
 
     println!(
-        "recording {} s at {} fps to {}",
-        options.seconds, options.fps, options.out
+        "recording {} s at {} fps to {}{}",
+        options.seconds,
+        options.fps,
+        options.out,
+        match (options.mic, options.system) {
+            (true, true) => " (mic + system audio)",
+            (true, false) => " (mic)",
+            (false, true) => " (system audio)",
+            (false, false) => "",
+        }
     );
 
     // Never set here: a fixed-duration run stops on its own frame budget. The flag exists so
@@ -357,7 +359,12 @@ fn doctor() {
         }
         Err(err) => println!("ffmpeg            {err}"),
     }
-    println!("audio backend     not yet implemented (M3)");
+    let audio = vrecnu_engine::probe_audio();
+    println!(
+        "audio backend     mic {}, system {}",
+        if audio.mic { "ready" } else { "unavailable" },
+        if audio.system { "ready" } else { "unavailable" }
+    );
     println!("camera + bubble   not yet implemented (M1/M4)");
     println!("publish server    not yet implemented (M5)");
     println!();
@@ -422,10 +429,18 @@ mod tests {
     }
 
     #[test]
-    fn recording_with_audio_refuses_rather_than_writing_a_silent_file() {
-        // A silent recording that looks successful is discovered after it has been shared.
-        let err = run(&argv(&["record", "--seconds", "1", "--mic"])).unwrap_err();
-        assert!(err.to_string().contains("M3"), "{err}");
+    fn record_options_carry_mic_and_system_through_to_the_request() {
+        // `run()` itself is not exercised here — it would start a real recording, which needs
+        // real capture/ffmpeg/audio hardware and belongs in a manual hardware check
+        // (TESTING.md), not `cargo test`. This only proves parsing reaches `RecordOptions`
+        // correctly, matching every other record-parsing test in this module.
+        let Command::Record(options) =
+            parse(&argv(&["record", "--seconds", "5", "--mic", "--system"])).unwrap()
+        else {
+            panic!("expected a record command");
+        };
+        assert!(options.mic);
+        assert!(options.system);
     }
 
     #[test]

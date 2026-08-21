@@ -10,3 +10,7 @@ description = "WASAPI loopback and microphone capture, mixed to 48 kHz stereo s1
 vrecnu-types.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+crossbeam-channel.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.23"

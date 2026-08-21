@@ -15,10 +15,12 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod audio_pipeline;
 mod error;
 mod machine;
 mod pipeline;
 
+pub use audio_pipeline::{probe as probe_audio, AudioProbe};
 pub use error::EngineError;
 pub use machine::{SessionMachine, TransitionError};
 pub use pipeline::{list_capture_sources, probe_encoder, record, RecordOutcome, RecordRequest};
