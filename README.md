@@ -27,7 +27,8 @@ Four invariants govern every decision: **lightweight**, **a no-install path alwa
 | M1 | Floating camera bubble (raw Win32 layered window) | code complete; needs a human at a real screen (`TESTING.md` §1) |
 | M2 | Screen capture → FFmpeg → seekable MP4 | **video path done and measured** |
 | M3 | System audio + microphone | **audio path done and measured** |
-| M4–M9 | Camera, publish server, UI, editing, packaging, budgets | not started |
+| M4 | Camera + floating bubble | **camera path done and measured** |
+| M5–M9 | Publish server, UI, editing, packaging, budgets | not started |
 
 Try the recorder as it stands:
 

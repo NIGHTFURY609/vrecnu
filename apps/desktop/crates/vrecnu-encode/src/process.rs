@@ -165,11 +165,42 @@ impl FfmpegProcess {
     /// # Errors
     /// [`EncodeError::Exited`] with the tail of stderr when FFmpeg reports failure.
     pub fn finish(mut self) -> Result<FfmpegProgress, EncodeError> {
+        self.close_stdin();
+        self.wait()
+    }
+
+    /// Signals end-of-video without waiting for FFmpeg to exit.
+    ///
+    /// Split out from [`Self::finish`] because the *order* of shutdown across three inputs is
+    /// load-bearing, and the two halves belong on opposite sides of it.
+    ///
+    /// M3 established that a pipe input must be closed before waiting for FFmpeg, or the muxer
+    /// never finalizes. Adding the camera overlay produced the mirror image of that deadlock:
+    /// the overlay writer blocks in `WriteFile` because FFmpeg — still working through
+    /// `h264_mf`'s warm-up backlog — has stopped draining the pipe, and FFmpeg only catches up
+    /// once its video stdin is closed. Stopping the camera first therefore waits on FFmpeg,
+    /// which is waiting on a stdin close that comes after. Neither ordering works with a single
+    /// `finish()`.
+    ///
+    /// Closing stdin *first* dissolves it: FFmpeg drains its backlog, the blocked writers
+    /// unblock on their own, each pipe is then closed normally for a clean EOF, and only then is
+    /// the process waited on. Idempotent.
+    pub fn close_stdin(&mut self) {
         // Dropping stdin is the shutdown signal: `-i pipe:0` sees EOF, writes the final
         // fragment, and exits cleanly. There is no `q` to send — `-nostdin` is set, and stdin
         // carries video.
         drop(self.stdin.take());
+    }
 
+    /// Waits for FFmpeg to exit and reports its final progress.
+    ///
+    /// Call [`Self::close_stdin`] first, and close every pipe input in between — a muxer reading
+    /// a still-open input has no reason to finalize, so this would wait forever.
+    ///
+    /// # Errors
+    /// [`EncodeError::Died`] if the process cannot be waited on, [`EncodeError::Exited`] if it
+    /// exited non-zero.
+    pub fn wait(mut self) -> Result<FfmpegProgress, EncodeError> {
         let status = self
             .child
             .wait()

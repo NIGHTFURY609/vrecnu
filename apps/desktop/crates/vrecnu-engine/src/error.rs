@@ -34,6 +34,9 @@ pub enum EngineError {
     /// The named pipe carrying mixed audio to FFmpeg failed.
     #[error(transparent)]
     Pipe(#[from] vrecnu_namedpipe::PipeError),
+    /// The floating camera bubble window could not be created.
+    #[error(transparent)]
+    Bubble(#[from] vrecnu_bubble_win32::BubbleError),
     /// The requested action is not legal in the current state.
     #[error("cannot {action} while {state:?}")]
     IllegalTransition {
@@ -136,6 +139,16 @@ impl From<EngineError> for AppError {
                 "Camera access was denied.",
             )
             .with_hint("Allow camera access in Windows privacy settings, then try again."),
+
+            // The bubble is the *window*, not the camera: the recording's burned-in overlay
+            // does not depend on it, so this is deliberately not reported as a camera failure.
+            // It is still fatal to `start`, because a user who asked for a bubble and silently
+            // did not get one has no way to tell that from a broken camera.
+            EngineError::Bubble(_) => AppError::recoverable(
+                ErrorCode::Internal,
+                "The floating camera window could not be opened.",
+            )
+            .with_hint("Recording without the floating window still includes your camera."),
 
             // Residual arms for the three subsystems above. Required, not optional: their
             // error enums are `#[non_exhaustive]`, so this crate can never match them

@@ -37,11 +37,25 @@ const WM_BUBBLE_PRESENT: u32 = WM_APP + 1;
 /// Posted to the window thread to tear the window down.
 const WM_BUBBLE_CLOSE: u32 = WM_APP + 2;
 
+/// The surface a producer has staged but the window thread has not drawn yet.
+///
+/// Double-buffered rather than handed over as a fresh `Vec` each time: presenting runs thirty
+/// times a second for the whole recording, and moving a ~309 KB allocation through the mutex
+/// per frame means thirty allocate/free pairs a second in the one window AGENTS.md §1 has no
+/// headroom to spare. The window thread swaps this buffer out and blits the swapped-out one, so
+/// neither side ever holds the lock across a GDI call.
+#[derive(Debug, Default)]
+struct Pending {
+    bytes: Vec<u8>,
+    /// False when the window thread has already drawn what is in `bytes`.
+    dirty: bool,
+}
+
 /// Shared state between the presenting thread and the window thread.
 #[derive(Debug, Default)]
 struct Shared {
-    /// The next surface to present, premultiplied BGRA.
-    pending: Mutex<Option<Vec<u8>>>,
+    /// The next surface to present, premultiplied BGRA. See [`Pending`].
+    pending: Mutex<Pending>,
     width: AtomicU32,
     height: AtomicU32,
     x: AtomicI32,
@@ -125,21 +139,29 @@ impl LayeredBubble {
     /// Queues a surface and wakes the window thread.
     ///
     /// Called from the camera thread. It stores and posts rather than drawing inline, because
-    /// GDI calls must happen on the thread that owns the window.
+    /// GDI calls must happen on the thread that owns the window. Takes a slice and copies:
+    /// the caller keeps its buffer and reuses it next frame — see [`Pending`].
     ///
     /// # Errors
     /// Returns [`BubbleError::ThreadGone`] if the window thread has stopped.
-    pub fn present(&self, surface: Vec<u8>) -> Result<(), BubbleError> {
+    pub fn present(&self, surface: &[u8]) -> Result<(), BubbleError> {
         if !self.shared.running.load(Ordering::Acquire) {
             return Err(BubbleError::ThreadGone);
         }
-        // Replace rather than queue: if the window thread has not drawn the previous frame
-        // yet, the newer one is strictly better and the old one is worthless.
-        *self
-            .shared
-            .pending
-            .lock()
-            .map_err(|_| BubbleError::ThreadGone)? = Some(surface);
+        {
+            // Overwrite rather than queue: if the window thread has not drawn the previous
+            // frame yet, the newer one is strictly better and the old one is worthless.
+            let mut pending = self
+                .shared
+                .pending
+                .lock()
+                .map_err(|_| BubbleError::ThreadGone)?;
+            if pending.bytes.len() != surface.len() {
+                pending.bytes.resize(surface.len(), 0);
+            }
+            pending.bytes.copy_from_slice(surface);
+            pending.dirty = true;
+        }
 
         // SAFETY: `thread_id` came from `GetCurrentThreadId` on a thread that was running a
         // message loop, and PostThreadMessageW is documented thread-safe. A failure here just
@@ -260,13 +282,25 @@ fn window_thread(shared: &Arc<Shared>, ready: &std::sync::mpsc::Sender<Result<u3
         }
 
         let window = SendHwnd(hwnd);
+        // The window thread's half of the double buffer. Swapped with the producer's, never
+        // reallocated once both sides have settled on a size.
+        let mut front: Vec<u8> = Vec::new();
         let mut message = MSG::default();
         while GetMessageW(&mut message, None, 0, 0).as_bool() {
             match message.message {
                 WM_BUBBLE_PRESENT => {
-                    let surface = shared.pending.lock().ok().and_then(|mut slot| slot.take());
-                    if let Some(surface) = surface {
-                        present_surface(window, shared, &surface);
+                    // Swap under the lock, blit outside it: a GDI blit takes long enough that
+                    // holding the mutex across it would stall the camera thread every frame.
+                    let swapped = shared.pending.lock().is_ok_and(|mut pending| {
+                        let dirty = pending.dirty;
+                        if dirty {
+                            std::mem::swap(&mut pending.bytes, &mut front);
+                            pending.dirty = false;
+                        }
+                        dirty
+                    });
+                    if swapped {
+                        present_surface(window, shared, &front);
                     }
                 }
                 WM_BUBBLE_CLOSE | WM_QUIT => break,

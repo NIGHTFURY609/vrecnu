@@ -205,7 +205,7 @@ cargo run -p vrecnu-cli -- sources
 | `doctor` prints `capture backend ready (N sources)` | yes |
 | `doctor` prints an `h264 encoder` line naming `h264_mf` or `libopenh264` | yes |
 | `doctor` prints `audio backend     mic ready, system ready` (or `unavailable` per device) | yes |
-| `doctor` still names M4–M5 for the parts that genuinely do not exist | yes |
+| `doctor` reports a real camera count, and still names M5 for the publish server | yes |
 | `sources` lists your displays with `*` on the primary, then windows | yes |
 | Display ids are **1-based** (`monitor:1`, never `monitor:0`) | yes |
 
@@ -281,7 +281,48 @@ tone) — WASAPI loopback correctly reports silence when nothing is playing, and
 | Video and audio durations match | `ffprobe -show_entries format=duration` on the whole file, not per-stream |
 | The recording still finishes (may take longer than the requested duration) | yes — a few extra seconds during FFmpeg's encoder warm-up is expected, see HANDOFF.md's M2/M3 known-issues; a recording that never finishes is not |
 
-### 3.5 Things known to be unexercised
+### 3.5 Camera and the floating bubble
+
+```powershell
+cargo run -p vrecnu-cli -- cameras
+cargo run -p vrecnu-cli -- record --seconds 10 --camera 0 --out cam.mp4
+```
+
+| Check | Expect |
+|---|---|
+| `cameras` lists your webcam(s) with an id and a name | yes |
+| The log line `camera opened` names a *small* format (e.g. `320x240 NV12`), not the sensor's maximum | yes — the bubble is ~240 px and the crop throws the rest away |
+| `frames_dropped 0` | yes |
+| The recording has a circular camera bubble in the **bottom-right**, with a white ring and a soft shadow | yes |
+| Skin tones look natural | yes — a blue face means the RGBA→BGRA swap regressed |
+| No dark fringe around the circle's edge | yes — a fringe means straight/premultiplied alpha got crossed |
+
+Now the floating window:
+
+```powershell
+cargo run -p vrecnu-cli -- record --seconds 10 --camera 0 --bubble --out bub.mp4
+```
+
+| Check | Expect |
+|---|---|
+| A circular camera bubble floats above every other window while recording | yes |
+| It disappears when the recording ends, and the webcam light goes out | yes |
+| The log says `camera_burned_in=false` | yes — over a monitor capture the window is recorded by the OS, and burning it in as well draws it twice |
+| The recording contains **exactly one** bubble, where the window was | yes — two offset circles is the bug in HANDOFF.md M4 §2 coming back |
+
+And everything at once:
+
+```powershell
+cargo run -p vrecnu-cli -- record --seconds 10 --camera 0 --bubble --mic --system --out full.mp4
+ffprobe -hide_banner full.mp4
+```
+
+| Check | Expect |
+|---|---|
+| Both an h264 and an aac stream | yes |
+| `frames_dropped` is non-zero on this one | expected — FFmpeg takes seconds to become ready with an audio input; see HANDOFF.md M4 known-issues |
+
+### 3.6 Things known to be unexercised
 
 Worth a look if you have the hardware:
 
@@ -312,7 +353,6 @@ invocations and the default silently resolves to `\..\Cargo.toml`.
 
 | Area | Blocked on |
 |---|---|
-| Camera in the bubble | M4 |
 | Desktop publish round-trip | M5 + an OAuth client |
 | Desktop UI | M6 |
 | Trim / export on the desktop side | M7 (`render_args` is built and tested; nothing calls it) |

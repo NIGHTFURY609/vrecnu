@@ -35,7 +35,10 @@ mod window;
 
 pub use error::BubbleError;
 pub use geometry::{alpha_premultiply, ring_coverage, BubbleLayout};
-pub use render::{render_bubble, to_square, SquareFrame, RING_COLOR};
+pub use render::{
+    premultiply_into, render_bubble, to_square, to_square_into, AlphaMode, BubbleMask, SquareFrame,
+    RING_COLOR,
+};
 #[cfg(windows)]
 pub use window::LayeredBubble;
 

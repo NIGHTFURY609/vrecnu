@@ -1,8 +1,7 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-08-13
-**Branch:** `feat/m3-wasapi-audio` (off `main`; M0–M2 landed on `main` first)
-**Committed.** M3 (this session's work) is committed on its branch, not yet merged.
+**Last updated:** 2026-09-03
+**Branch:** `main` (M0–M3 landed; M4 is this session's work, **uncommitted**)
 
 ---
 
@@ -11,7 +10,7 @@
 Observed passing this session, not assumed:
 
 ```
-apps/desktop>  cargo test --workspace -j 4     exit 0, 175 tests passed
+apps/desktop>  cargo test --workspace -j 4     exit 0, 212 tests passed
 apps/desktop>  cargo clippy -- -D warnings      clean
 apps/desktop>  cargo fmt --all -- --check       clean
 apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
@@ -229,20 +228,106 @@ repeating exactly:
   matters for — FFmpeg dying between spawn and opening its audio input — is bounded by
   `STOP_GRACE` rather than fixed properly; see that constant's doc comment for the trade-off.
 
+---
+
+## M4 (camera + bubble) — complete and measured
+
+`--camera` burns a circular camera bubble into the recording; `--bubble` also floats it over the
+desktop. Verified on real hardware (a USB webcam, a real screen), not inferred from unit tests:
+
+| Criterion | Result |
+|---|---|
+| `--camera 0` produces a playable 1080p30 MP4 | `ffprobe`: h264, 1920x1080, `avg_frame_rate=30/1`, `duration=10.07`, 302 frames |
+| The camera is actually *in* it, correctly cropped and coloured | frame extracted and looked at: circular crop, white ring, soft shadow, natural skin tones |
+| …and is still there at the end of the file | last 0.5 s extracted: bubble present, so the shutdown reorder does not truncate the overlay |
+| `frames_dropped == 0` (AGENTS §1) | 0, on three consecutive 10 s runs |
+| `--bubble` floats a window *and* records it exactly once | one bubble in frame, at the window's position |
+| `--camera --bubble --mic --system` all at once | h264 + aac 48 kHz stereo, valid file, bubble present |
+| M3 audio not regressed by the shutdown reorder | `--mic --system`: `mean_volume=-40.6 dB`, `max_volume=-7.5 dB` — real audio, not silence |
+
+### What was built
+
+- **`vrecnu-camera`** — `format.rs` (`select_format`, pure and hardware-free: smallest format that
+  still covers the bubble, ties broken by frame rate, largest as a fallback) and
+  `nokhwa_source.rs` (`NokhwaCameraSource` on Media Foundation, one device open fanned out to N
+  consumers, RGBA→BGRA in place, error classification into denied/busy/backend).
+- **`vrecnu-bubble-win32`** — `BubbleMask` precomputes the supersampled circle once instead of per
+  frame, and `AlphaMode` makes the premultiplied/straight distinction an explicit argument.
+  `premultiply_into` derives the window's surface from the pipe's, so a frame is composited once
+  rather than twice. `present` takes `&[u8]` and double-buffers, so presenting allocates nothing.
+- **`vrecnu-engine/src/camera_pipeline.rs`** — `CameraPipeline`: device, bubble window and named
+  pipe as one RAII unit, mirroring `audio_pipeline`. Ticks the overlay pipe on the recording's
+  shared clock.
+- **`vrecnu-encode`** — `LiveEncodeParams::camera_position`, so the burn-in lands where the user
+  sees the bubble rather than always in a corner; `finish()` split into `close_stdin()` + `wait()`.
+- **`vrecnu-cli`** — `cameras`, `--camera [ID]`, `--bubble`; `doctor` reports real camera counts.
+
+### Five bugs found only by running it
+
+The M2/M3 pattern held: every one of these passed the unit tests.
+
+1. **All recording was broken on this machine, before M4 touched anything.**
+   `windows-capture` 2.0's `Monitor::index()` parses the number out of the device name
+   (`\\.\DISPLAY5` → 5) while `Monitor::from_index(n)` returns `enumerate()[n - 1]`, a *position*.
+   Both are one-based, which is what let the confusion survive review — but they are different
+   namespaces. This laptop's single panel is `\\.\DISPLAY5`, so `sources` listed `monitor:5` and
+   starting it reported the display had been disconnected. Resolution now matches on the device
+   number (`is_monitor_source`/`monitor_by_index`), which is also order-independent and therefore
+   what multi-monitor needs.
+2. **The bubble was drawn twice whenever the window was shown.** DWM composites a layered topmost
+   window onto the desktop, so WGC records the bubble on its own; burning it in as well produced
+   two visibly offset circles — the captured copy sits where the window is, the overlay sits at
+   the coordinates FFmpeg got at spawn. `CameraSelection::burn_in` now skips the overlay entirely
+   when a bubble window is over a captured *monitor*, and keeps it for window capture (where the
+   bubble is a separate window and genuinely absent) and for headless `--camera`.
+3. **`frames_dropped` counted frames nobody wanted.** The counters ran from before FFmpeg was
+   spawned until after it had exited. WGC delivers throughout both windows and nothing drains the
+   channel, so the pool exhausts and every frame looks lost: 67 phantom drops at the tail, 3 at the
+   head. `PipelineSink::counting` limits the statistics to the pacer's first tick through its last.
+4. **Camera shutdown deadlocked against FFmpeg, the M3 audio bug through a different door.** The
+   overlay writer blocks in `WriteFile` because FFmpeg, still behind on `h264_mf` warm-up, has
+   stopped draining the pipe — and FFmpeg only catches up once its video stdin closes, which
+   happened *after* the camera was stopped. Cost 5 s of `STOP_GRACE` on every recording. Fixed by
+   splitting `finish()` so stdin closes **first**, the pipes close **second**, and the process is
+   waited on **last**. An attempt to force the issue with `DisconnectNamedPipe` instead made it
+   worse — an indefinite hang — and was reverted.
+5. **The pipe buffer was smaller than one frame.** 64 KB is generous for a 4 KB audio tick and
+   five times too small for a ~309 KB bubble surface, so every camera write blocked mid-payload.
+   `create_with_buffer` sizes it to two whole frames.
+
+### Known, measured, not yet addressed
+
+- **Audio still costs frames at startup.** `--mic --system` drops ~26 frames, all of them before
+  the first progress line — FFmpeg takes seconds to become ready with an audio input and is not
+  reading stdin yet. Pre-existing (this is the M2/M3 warm-up contention), only now *visible*
+  because the drop counters are honest. Camera-only and screen-only both reach 0. Belongs with the
+  M9 encoder-tuning work, not with M4.
+- **Dragging the bubble does not move the burn-in.** `overlay=x=..:y=..` is fixed when FFmpeg
+  spawns. Only reachable through window capture now, since monitor capture no longer burns in.
+- **MJPEG-only cameras are refused** at negotiation rather than decoded, so `nokhwa/decoding` and
+  its NASM build prerequisite stay out of every contributor's build. `--features mjpeg` enables it.
+- **`nokhwa` pulls in `image`, and it costs less than it looks.** Measured rather than assumed:
+  `cargo build --release -p vrecnu-cli` produces a **0.93 MB** exe — release, stripped, no FFmpeg
+  linked, which is exactly the shape AGENTS §1 budgets at ≤ 15 MB. That binary links the entire
+  engine, `nokhwa` and `image` included, so the camera stack is ~6 % of the budget and is not
+  where the risk lives. What is still unmeasured is the **Tauri shell** (M6), which is what
+  ADR-006 actually warns about; M9 owns that measurement, not this one.
+  - `mozjpeg-sys` and its NASM build requirement stay out of the default build, confirmed with
+    `cargo tree -i mozjpeg-sys` → "did not match any packages". The `Cargo.lock` entries for it
+    are inert: reachable only via `--features mjpeg`.
+
 ### Next actions, in order
 
-1. **Window capture has not been exercised**, only monitor capture. `window:HWND` ids
-   enumerate correctly; nothing has recorded one. Expect the size to differ from the monitor
-   path and the `SizeChanged` guard to matter on a window that is resized mid-recording.
-2. **Multi-monitor is untested** — this machine has one display. `Monitor::from_index` is
-   **1-based and rejects 0**, and `monitor_source_id` matches that rather than converting.
-3. **M4: camera + bubble.** See the table below.
+1. **Window capture with a camera has not been exercised** — it is the one path that still burns
+   the overlay in, and the one where `camera_position` still matters.
+2. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
+3. **M5: loopback publish server.** `tiny_http` not yet added; the pure logic is written and
+   tested, only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`.
 
-### Then M4–M9
+### Then M5–M9
 
 | M | Scope | Notes |
 |---|---|---|
-| M4 | Camera + bubble integrated | `nokhwa` not yet added. Camera must be opened **exactly once** and fanned out. |
 | M5 | Loopback publish server | `tiny_http` not yet added. Port negotiation, Range, token, Host/Origin checks are written and tested as pure logic; only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`. |
 | M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. |
 | M7 | Editing | `render_args()` already builds the command lines and is tested. |

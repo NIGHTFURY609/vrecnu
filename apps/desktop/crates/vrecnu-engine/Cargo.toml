@@ -14,6 +14,9 @@ vrecnu-shell-api.workspace = true
 vrecnu-capture.workspace = true
 vrecnu-audio.workspace = true
 vrecnu-camera.workspace = true
+# The bubble window. Raw Win32, no GUI framework in it -- the shell-boundary check lists it as
+# shell-free, so depending on it here does not weaken ADR-006.
+vrecnu-bubble-win32.workspace = true
 vrecnu-encode.workspace = true
 vrecnu-publish-server.workspace = true
 vrecnu-namedpipe.workspace = true

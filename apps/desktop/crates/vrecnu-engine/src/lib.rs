@@ -16,11 +16,13 @@
 #![warn(missing_docs)]
 
 mod audio_pipeline;
+mod camera_pipeline;
 mod error;
 mod machine;
 mod pipeline;
 
 pub use audio_pipeline::{probe as probe_audio, AudioProbe};
+pub use camera_pipeline::{list_cameras, probe as probe_camera, CameraSelection};
 pub use error::EngineError;
 pub use machine::{SessionMachine, TransitionError};
 pub use pipeline::{list_capture_sources, probe_encoder, record, RecordOutcome, RecordRequest};

@@ -14,8 +14,14 @@
 #![warn(missing_docs)]
 
 mod error;
+mod format;
+#[cfg(windows)]
+mod nokhwa_source;
 
 pub use error::CameraError;
+pub use format::{select_format, DeviceFormat};
+#[cfg(windows)]
+pub use nokhwa_source::{camera_available, enumerate_cameras, NokhwaCameraSource};
 
 use vrecnu_types::{CameraInfo, Size};
 
@@ -28,8 +34,13 @@ pub struct CameraFrame {
     pub height: u32,
     /// Tightly packed BGRA8.
     pub bgra: Vec<u8>,
-    /// QueryPerformanceCounter timestamp.
-    pub qpc: i64,
+    /// Nanoseconds since this source started delivering.
+    ///
+    /// Deliberately *not* a `QueryPerformanceCounter` value: reading QPC needs `unsafe`, this
+    /// crate forbids it, and nothing downstream needs a shared time base with screen capture —
+    /// the overlay is composited by FFmpeg on its own input clock, not matched frame-to-frame
+    /// against the screen. A monotonic per-source counter is what the field can honestly be.
+    pub timestamp_ns: u64,
 }
 
 /// Anything that wants camera frames: the bubble window, the encoder overlay pipe, a test.

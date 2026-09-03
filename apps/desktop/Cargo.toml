@@ -21,6 +21,11 @@ parking_lot = "0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Camera only. `default-features = false` drops nokhwa's `decoding` feature, which pulls in
+# `mozjpeg-sys` and with it a NASM build prerequisite -- see vrecnu-camera's module docs for why
+# MJPEG is declined at negotiation time instead.
+nokhwa = { version = "0.10", default-features = false, features = ["input-msmf"] }
+
 vrecnu-types = { path = "crates/vrecnu-types" }
 vrecnu-shell-api = { path = "crates/vrecnu-shell-api" }
 vrecnu-capture = { path = "crates/vrecnu-capture" }

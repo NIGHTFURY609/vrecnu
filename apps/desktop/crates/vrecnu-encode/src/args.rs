@@ -21,6 +21,17 @@ pub struct LiveEncodeParams<'a> {
     pub camera_pipe: Option<&'a str>,
     /// Size of the camera overlay in pixels.
     pub camera_size: Option<Size>,
+    /// Where the overlay's top-left corner sits in the captured frame.
+    ///
+    /// `None` pins it to the bottom-right corner. When the bubble window is shown, pass its
+    /// rectangle so the burn-in lands where the user actually sees the bubble; a recording
+    /// whose camera is in a different place from the on-screen bubble reads as a bug.
+    ///
+    /// Fixed at spawn, like `-video_size`: FFmpeg's `overlay` coordinates are filter-graph
+    /// arguments, so **dragging the bubble mid-recording does not move the burn-in**. Screen
+    /// coordinates are used as-is, which is correct for a capture of the primary monitor and
+    /// wrong by that monitor's origin for any other — multi-monitor is untested (HANDOFF.md).
+    pub camera_position: Option<(i32, i32)>,
     /// Where to write the fragmented MP4.
     pub output: &'a Path,
 }
@@ -93,9 +104,15 @@ pub fn live_encode_args(params: &LiveEncodeParams<'_>) -> Vec<String> {
     // on FFmpeg's default stream selection here would silently pick the wrong video stream.
     let camera_index = if params.audio_pipe.is_some() { 2 } else { 1 };
     if params.camera_pipe.is_some() {
+        // Negative coordinates would push the overlay off the top-left of the frame, so a
+        // bubble dragged partly off-screen is clamped back on rather than silently cropped.
+        let placement = match params.camera_position {
+            Some((x, y)) => format!("x={}:y={}", x.max(0), y.max(0)),
+            None => "x=W-w-32:y=H-h-32".to_string(),
+        };
         args.extend([
             "-filter_complex".into(),
-            format!("[0:v][{camera_index}:v]overlay=x=W-w-32:y=H-h-32:shortest=0[v]"),
+            format!("[0:v][{camera_index}:v]overlay={placement}:shortest=0[v]"),
             "-map".into(),
             "[v]".into(),
         ]);
@@ -262,6 +279,7 @@ mod tests {
             encoder: H264Encoder::MediaFoundation,
             audio_pipe: audio,
             camera_pipe: camera,
+            camera_position: None,
             camera_size: camera.map(|_| Size {
                 width: 240,
                 height: 240,
@@ -329,6 +347,41 @@ mod tests {
             "{}",
             joined(&args)
         );
+    }
+
+    #[test]
+    fn an_explicit_overlay_position_puts_the_burn_in_where_the_bubble_is() {
+        // A recording whose camera sits in a different corner from the bubble the user was
+        // looking at reads as a bug, so the placement follows the window rather than a corner.
+        let out = PathBuf::from("out.mp4");
+        let mut p = params(&out, None, Some(r"\\.\pipe\cam"));
+        p.camera_position = Some((120, 64));
+        assert!(
+            joined(&live_encode_args(&p)).contains("overlay=x=120:y=64:shortest=0"),
+            "{}",
+            joined(&live_encode_args(&p))
+        );
+    }
+
+    #[test]
+    fn an_off_screen_bubble_is_clamped_back_into_the_frame() {
+        // A bubble dragged past the top-left has negative screen coordinates; passing those
+        // through would push the overlay out of the frame and silently crop the camera away.
+        let out = PathBuf::from("out.mp4");
+        let mut p = params(&out, None, Some(r"\\.\pipe\cam"));
+        p.camera_position = Some((-40, -10));
+        assert!(
+            joined(&live_encode_args(&p)).contains("overlay=x=0:y=0:shortest=0"),
+            "{}",
+            joined(&live_encode_args(&p))
+        );
+    }
+
+    #[test]
+    fn without_a_position_the_overlay_falls_back_to_the_corner() {
+        let out = PathBuf::from("out.mp4");
+        let p = params(&out, None, Some(r"\\.\pipe\cam"));
+        assert!(joined(&live_encode_args(&p)).contains("overlay=x=W-w-32:y=H-h-32"));
     }
 
     #[test]

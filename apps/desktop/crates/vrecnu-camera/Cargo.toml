@@ -6,7 +6,21 @@ license.workspace = true
 rust-version.workspace = true
 description = "Sole owner of the webcam device, fanning frames out to every consumer."
 
+[features]
+default = []
+# Adds MJPEG decoding, for the rare device that offers nothing else. Off by default because it
+# pulls `mozjpeg-sys` in behind `nokhwa/decoding`, which needs NASM on the build machine --
+# a real cost to impose on every contributor to an open-source repo. See src/nokhwa_source.rs.
+mjpeg = ["nokhwa/decoding"]
+
 [dependencies]
 vrecnu-types.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+# Windows-only: `input-msmf` compiles `nokhwa-bindings-windows`, which is Media Foundation FFI
+# and does not exist on other targets. Keeping it behind `cfg(windows)` rather than in the
+# shared `[dependencies]` block is what lets `cargo check` still pass on a non-Windows host.
+[target.'cfg(windows)'.dependencies]
+nokhwa.workspace = true
+parking_lot.workspace = true

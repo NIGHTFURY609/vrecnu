@@ -92,7 +92,7 @@ fn run() {
         let frame = animated_frame(layout.circle_diameter, elapsed);
         let surface = render_bubble(&layout, &frame);
 
-        if let Err(err) = bubble.present(surface) {
+        if let Err(err) = bubble.present(&surface) {
             eprintln!("present failed: {err}");
             break;
         }

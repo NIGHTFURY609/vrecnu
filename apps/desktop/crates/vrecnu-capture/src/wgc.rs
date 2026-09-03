@@ -29,12 +29,35 @@ const WINDOW_PREFIX: &str = "window:";
 
 /// Builds the id string the UI round-trips back to [`WgcBackend::start`].
 ///
-/// **`index` is one-based.** `Monitor::index()` and `Monitor::from_index()` both are, so the
-/// namespace matches them rather than silently converting; `monitor:0` is not a display and is
-/// rejected as [`CaptureError::SourceGone`].
+/// **`index` is a Windows display *device* number**, the `5` in `\\.\DISPLAY5`, which is what
+/// `Monitor::index()` returns. It is one-based, stable across reboots, and — importantly — it is
+/// *not* a position in [`Monitor::enumerate`]'s list. Resolve one with [`monitor_by_index`],
+/// never with `Monitor::from_index`; see that function's doc comment for what goes wrong.
 #[must_use]
 pub fn monitor_source_id(index: usize) -> CaptureSourceId {
     CaptureSourceId(format!("{MONITOR_PREFIX}{index}"))
+}
+
+/// Finds the monitor whose display device number is `index`.
+///
+/// **Not `Monitor::from_index`.** In `windows-capture` 2.0 those two are different namespaces
+/// that both happen to be one-based, which is what made the confusion survive review:
+///
+/// - `Monitor::index()` parses the number out of the device name — `\\.\DISPLAY5` gives `5`.
+/// - `Monitor::from_index(n)` returns `enumerate()[n - 1]`, a *position* in the list.
+///
+/// They agree only when a display's device number equals its enumeration position. On a laptop
+/// whose single panel is `\\.\DISPLAY5`, `index()` returns 5 and `from_index(5)` returns
+/// `NotFound` — so `sources` listed `monitor:5` and starting it reported that the display had
+/// been disconnected. Every recording on such a machine failed, and the error blamed the user's
+/// monitor. Matching on the device number instead is also order-independent, which is what a
+/// multi-monitor setup needs: unplugging a display renumbers positions but not device names.
+#[must_use]
+pub fn monitor_by_index(index: usize) -> Option<Monitor> {
+    Monitor::enumerate()
+        .ok()?
+        .into_iter()
+        .find(|monitor| monitor.index().ok() == Some(index))
 }
 
 /// The id for the primary display, for callers that did not ask for a specific source.
@@ -47,6 +70,17 @@ pub fn primary_monitor_source_id() -> Result<CaptureSourceId, CaptureError> {
         .index()
         .map_err(|err| CaptureError::Backend(Box::new(err)))?;
     Ok(monitor_source_id(index))
+}
+
+/// Whether `id` names a monitor rather than a window.
+///
+/// Lives here, next to the prefix constants, so the answer cannot drift from the format
+/// `monitor_source_id` produces. The engine needs it because a floating bubble is composited
+/// onto the desktop by DWM and therefore appears in a *monitor* capture on its own, but is not
+/// part of any single *window* capture.
+#[must_use]
+pub fn is_monitor_source(id: &CaptureSourceId) -> bool {
+    id.0.starts_with(MONITOR_PREFIX)
 }
 
 /// Builds a window source id from its raw `HWND` value.
@@ -209,13 +243,13 @@ impl CaptureBackend for WgcBackend {
         // capture item is a different concrete type for a monitor and a window, and a closure
         // would be monomorphised to whichever one called it first.
         if let Some(index) = raw.strip_prefix(MONITOR_PREFIX) {
-            // One-based, matching `Monitor::index()`/`from_index()`. Zero is not a display and
-            // `from_index` rejects it, so the SourceGone below is the honest answer.
+            // A display *device* number, not a position in the enumeration -- see
+            // `monitor_by_index`, which is the only correct way to resolve one.
             let index: usize = index
                 .parse()
                 .map_err(|_| CaptureError::SourceGone(source.clone()))?;
             let monitor =
-                Monitor::from_index(index).map_err(|_| CaptureError::SourceGone(source.clone()))?;
+                monitor_by_index(index).ok_or_else(|| CaptureError::SourceGone(source.clone()))?;
             self.frame_size = Some(Size {
                 width: monitor.width().unwrap_or(0),
                 height: monitor.height().unwrap_or(0),

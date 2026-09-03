@@ -13,11 +13,16 @@ use crate::PipeError;
 /// last error.
 const ERROR_PIPE_CONNECTED: i32 = 535;
 
-/// Bytes reserved for the pipe's internal output buffer.
+/// Default bytes reserved for the pipe's internal output buffer.
 ///
 /// Generous relative to one audio tick's worth of data — a 20 ms tick at 48 kHz stereo `s16` is
 /// under 4 KB — so a brief stall in FFmpeg reading its input doesn't immediately back-pressure
 /// the writer thread.
+///
+/// **Not generous for video.** One 278x278 BGRA bubble overlay frame is ~309 KB, five times this
+/// buffer, so every single write blocks part-way through until FFmpeg drains it — which during
+/// `h264_mf`'s warm-up backlog means blocking for seconds. A caller writing frame-sized payloads
+/// should size the buffer with [`NamedPipeServer::create_with_buffer`] instead.
 const OUT_BUFFER_SIZE: u32 = 64 * 1024;
 
 /// Builds the full `\\.\pipe\<name>` path FFmpeg's `-i` argument and [`NamedPipeServer::create`]
@@ -55,6 +60,18 @@ impl NamedPipeServer {
     /// [`PipeError::Create`] if the pipe cannot be created — most commonly a name collision with
     /// a still-live pipe from a previous session.
     pub fn create(name: &str) -> Result<Self, PipeError> {
+        Self::create_with_buffer(name, OUT_BUFFER_SIZE)
+    }
+
+    /// [`Self::create`] with an explicit output-buffer size.
+    ///
+    /// Size it to hold at least one whole payload. A buffer smaller than a single write means
+    /// every write blocks mid-payload waiting for the reader, which turns an ordinary encoder
+    /// stall into a writer thread stuck for seconds — see [`OUT_BUFFER_SIZE`].
+    ///
+    /// # Errors
+    /// [`PipeError::Create`] if the pipe cannot be created.
+    pub fn create_with_buffer(name: &str, out_buffer_bytes: u32) -> Result<Self, PipeError> {
         let path = HSTRING::from(pipe_path(name));
         // SAFETY: `path` is a valid, null-terminated wide string kept alive for the duration of
         // the call by `HSTRING`'s own ownership. The remaining arguments are plain values (byte
@@ -66,7 +83,7 @@ impl NamedPipeServer {
                 PIPE_ACCESS_OUTBOUND,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                 1,
-                OUT_BUFFER_SIZE,
+                out_buffer_bytes,
                 0,
                 0,
                 None,

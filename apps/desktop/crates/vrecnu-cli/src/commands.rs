@@ -11,7 +11,7 @@ use std::time::Duration;
 use vrecnu_engine::{RecordRequest, SessionMachine};
 use vrecnu_publish_server::REGISTERED_PORTS;
 use vrecnu_shell_api::ShellServices;
-use vrecnu_types::CaptureSourceId;
+use vrecnu_types::{BubbleSpec, CaptureSourceId};
 
 use crate::shell::CliShell;
 
@@ -61,11 +61,15 @@ USAGE:
 
 COMMANDS:
     sources                     List capturable screens and windows
+    cameras                     List available cameras
     record --seconds <N>        Record for N seconds, then encode
         [--source <ID>]         Which screen or window (default: primary display)
         [--out <PATH>]          Output file (default: vrecnu-recording.mp4)
         [--fps <N>]             Frame rate (default: 30)
         [--mic] [--system]      Include microphone / system audio
+        [--camera [ID]]         Burn a camera bubble into the recording
+                                (no ID: the system default camera)
+        [--bubble]              Also show the floating bubble on screen
     publish <FILE>              Serve FILE to the publish page and wait for a share link
     doctor                      Report what this build can do on this machine
     help                        Show this message
@@ -93,6 +97,10 @@ pub struct RecordOptions {
     pub mic: bool,
     /// Include system audio.
     pub system: bool,
+    /// Camera to burn in. `Some("")` is the system default; `None` records no camera.
+    pub camera: Option<String>,
+    /// Show the floating bubble window as well as burning the camera in.
+    pub bubble: bool,
 }
 
 /// A parsed command line.
@@ -100,6 +108,8 @@ pub struct RecordOptions {
 pub enum Command {
     /// List capture sources.
     Sources,
+    /// List cameras.
+    Cameras,
     /// Record for a fixed duration.
     Record(RecordOptions),
     /// Serve a file to the publish page.
@@ -122,6 +132,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
     match first.as_str() {
         "help" | "--help" | "-h" => Ok(Command::Help),
         "sources" => Ok(Command::Sources),
+        "cameras" => Ok(Command::Cameras),
         "doctor" => Ok(Command::Doctor),
         "publish" => args.get(1).map_or_else(
             || Err(CliError::MissingArgument("file")),
@@ -139,6 +150,8 @@ fn parse_record(args: &[String]) -> Result<Command, CliError> {
     let mut fps: u32 = 30;
     let mut mic = false;
     let mut system = false;
+    let mut camera: Option<String> = None;
+    let mut bubble = false;
 
     let mut index = 0;
     while index < args.len() {
@@ -189,6 +202,21 @@ fn parse_record(args: &[String]) -> Result<Command, CliError> {
                 system = true;
                 index += 1;
             }
+            // The one flag here whose value is optional. `--camera` alone means "the system
+            // default"; a following token that starts with `--` is the next flag, not a device
+            // id, so it is left for the loop rather than swallowed.
+            "--camera" => {
+                let value = args
+                    .get(index + 1)
+                    .filter(|next| !next.starts_with("--"))
+                    .cloned();
+                index += 1 + usize::from(value.is_some());
+                camera = Some(value.unwrap_or_default());
+            }
+            "--bubble" => {
+                bubble = true;
+                index += 1;
+            }
             other => return Err(CliError::UnknownCommand(other.to_string())),
         }
     }
@@ -200,6 +228,8 @@ fn parse_record(args: &[String]) -> Result<Command, CliError> {
         fps,
         mic,
         system,
+        camera,
+        bubble,
     }))
 }
 
@@ -215,6 +245,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             Ok(())
         }
         Command::Sources => sources(),
+        Command::Cameras => cameras(),
         Command::Record(options) => record(&options),
         // Publishing arrives in M5. Reporting that plainly beats a stub that pretends to upload
         // and hands back a link to nothing.
@@ -262,6 +293,18 @@ fn sources() -> Result<(), CliError> {
     Ok(())
 }
 
+fn cameras() -> Result<(), CliError> {
+    let cameras = vrecnu_engine::list_cameras().map_err(engine_failure)?;
+    if cameras.is_empty() {
+        println!("no cameras found");
+        return Ok(());
+    }
+    for camera in cameras {
+        println!("  {:<12} {}", camera.id, camera.name);
+    }
+    Ok(())
+}
+
 fn record(options: &RecordOptions) -> Result<(), CliError> {
     let shell = CliShell;
     let ffmpeg = shell
@@ -277,6 +320,10 @@ fn record(options: &RecordOptions) -> Result<(), CliError> {
         duration: Some(Duration::from_secs(u64::from(options.seconds))),
         mic: options.mic,
         system: options.system,
+        camera: options.camera.clone(),
+        // A bubble with no camera in it is an empty circle floating over the desktop, so the
+        // window is only ever offered alongside a device.
+        bubble: (options.bubble && options.camera.is_some()).then(BubbleSpec::default),
     };
 
     println!(
@@ -291,6 +338,21 @@ fn record(options: &RecordOptions) -> Result<(), CliError> {
             (false, false) => "",
         }
     );
+    if let Some(device) = &options.camera {
+        println!(
+            "camera            {}{}",
+            if device.is_empty() {
+                "system default"
+            } else {
+                device
+            },
+            if options.bubble {
+                " (floating bubble shown)"
+            } else {
+                " (burned in, no window)"
+            }
+        );
+    }
 
     // Never set here: a fixed-duration run stops on its own frame budget. The flag exists so
     // the same call is what a shell with a Stop button will make.
@@ -365,7 +427,11 @@ fn doctor() {
         if audio.mic { "ready" } else { "unavailable" },
         if audio.system { "ready" } else { "unavailable" }
     );
-    println!("camera + bubble   not yet implemented (M1/M4)");
+    match vrecnu_engine::list_cameras() {
+        Ok(cameras) if cameras.is_empty() => println!("camera backend    ready (no cameras found)"),
+        Ok(cameras) => println!("camera backend    ready ({} cameras)", cameras.len()),
+        Err(err) => println!("camera backend    unavailable ({err})"),
+    }
     println!("publish server    not yet implemented (M5)");
     println!();
     println!("This binary links the whole vrecnu engine with no GUI framework present,");
@@ -395,6 +461,46 @@ mod tests {
     }
 
     #[test]
+    fn camera_without_an_id_means_the_system_default() {
+        // Distinct from absent: `None` is "no camera", `Some("")` is "whichever one Windows
+        // considers default". Collapsing them would make it impossible to record without one.
+        let Command::Record(options) =
+            parse(&argv(&["record", "--seconds", "5", "--camera"])).unwrap()
+        else {
+            panic!("expected a record command");
+        };
+        assert_eq!(options.camera, Some(String::new()));
+    }
+
+    #[test]
+    fn camera_takes_the_following_token_as_a_device_id() {
+        let Command::Record(options) =
+            parse(&argv(&["record", "--seconds", "5", "--camera", "1"])).unwrap()
+        else {
+            panic!("expected a record command");
+        };
+        assert_eq!(options.camera, Some("1".into()));
+    }
+
+    #[test]
+    fn a_flag_after_camera_is_not_swallowed_as_a_device_id() {
+        // The trap in an optional-value flag: `--camera --bubble` must not open a camera named
+        // "--bubble" and silently drop the bubble.
+        let Command::Record(options) =
+            parse(&argv(&["record", "--seconds", "5", "--camera", "--bubble"])).unwrap()
+        else {
+            panic!("expected a record command");
+        };
+        assert_eq!(options.camera, Some(String::new()));
+        assert!(options.bubble);
+    }
+
+    #[test]
+    fn cameras_is_its_own_command() {
+        assert_eq!(parse(&argv(&["cameras"])).unwrap(), Command::Cameras);
+    }
+
+    #[test]
     fn record_parses_its_flags() {
         let parsed = parse(&argv(&[
             "record",
@@ -415,6 +521,8 @@ mod tests {
                 fps: 30,
                 mic: true,
                 system: true,
+                camera: None,
+                bubble: false,
             })
         );
     }

@@ -34,6 +34,7 @@ use vrecnu_encode::{live_encode_args, FfmpegProcess, LiveEncodeParams};
 use vrecnu_types::{CaptureSource, CaptureSourceId, CaptureStats, Size};
 
 use crate::audio_pipeline::{self, AudioPipeline, AudioSelection};
+use crate::camera_pipeline::{self, CameraPipeline, CameraSelection};
 use crate::EngineError;
 
 /// Buffers reserved for frames in flight.
@@ -75,6 +76,13 @@ pub struct RecordRequest {
     pub mic: bool,
     /// Capture system audio via WASAPI loopback.
     pub system: bool,
+    /// Camera to burn in as a bubble overlay. `Some("")` means the system default camera;
+    /// `None` records no camera at all.
+    pub camera: Option<String>,
+    /// Show the floating bubble window while recording. `None` still burns the camera into the
+    /// recording — the window and the overlay are separate choices, which is what lets a
+    /// headless `vrecnu-cli record` include a camera with nothing on screen.
+    pub bubble: Option<vrecnu_types::BubbleSpec>,
 }
 
 impl RecordRequest {
@@ -90,6 +98,8 @@ impl RecordRequest {
             duration: None,
             mic: false,
             system: false,
+            camera: None,
+            bubble: None,
         }
     }
 }
@@ -136,6 +146,19 @@ impl Counters {
     }
 }
 
+/// The capture side of the pipeline, as one argument.
+///
+/// These three always travel together and always refer to the same capture session: the channel
+/// frames arrive on, the counters describing them, and the flag saying whether those counters
+/// are live. Passing them separately made `run_until_stopped` an eight-argument function whose
+/// signature said nothing about which arguments were related.
+struct CaptureFeed<'a> {
+    rx: &'a Receiver<CapturedFrame>,
+    counters: &'a Counters,
+    /// See [`PipelineSink::counting`].
+    counting: &'a AtomicBool,
+}
+
 /// One frame copied out of the capture surface into a buffer we own.
 struct CapturedFrame {
     size: Size,
@@ -152,11 +175,34 @@ struct PipelineSink {
     size: Option<Size>,
     tx: Sender<CapturedFrame>,
     counters: Arc<Counters>,
+    /// Whether the counters describe what is happening right now.
+    ///
+    /// True only between the pacer's first tick and its last — *not* while the pipeline is
+    /// still being assembled, and not while it is being torn down. WGC delivers frames
+    /// throughout both windows and nothing drains the channel during either, so the pool
+    /// exhausts and every frame that arrives looks like a drop. Both windows are long enough to
+    /// matter: opening the camera and rasterising the bubble mask takes hundreds of
+    /// milliseconds before FFmpeg is even spawned, and draining three inputs at the end takes
+    /// seconds.
+    ///
+    /// Measured, not hypothetical. Counting the tail reported 67 drops on a recording that lost
+    /// nothing; counting the head reported 3, all inside the first second. Neither is a lost
+    /// frame — in one case the recording had not started, in the other it had already
+    /// finished — and together they made the `frames_dropped == 0` budget in AGENTS.md §1
+    /// unreachable by construction.
+    ///
+    /// Frames are still *forwarded* when this is false. They have to be: `run_until_stopped`
+    /// learns the capture size from the first frame, which necessarily arrives before the clock
+    /// starts. Only the counting is suppressed.
+    counting: Arc<AtomicBool>,
 }
 
 impl FrameSink for PipelineSink {
     fn on_frame(&mut self, frame: FrameRef<'_>) {
-        self.counters.frames_in.fetch_add(1, Ordering::Relaxed);
+        let counting = self.counting.load(Ordering::Relaxed);
+        if counting {
+            self.counters.frames_in.fetch_add(1, Ordering::Relaxed);
+        }
         let size = Size {
             width: frame.width,
             height: frame.height,
@@ -174,8 +220,12 @@ impl FrameSink for PipelineSink {
                 // `-video_size` is already fixed. Forwarding a differently-sized frame would
                 // produce a diagonally smeared image with no error anywhere, so it is dropped
                 // and the writer loop is told to fail the recording rather than freeze on the
-                // last good frame.
-                self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                // last good frame. The resize itself is recorded regardless of `counting`:
+                // it is a *failure*, not a statistic, and the writer loop has to hear about it
+                // either way.
+                if counting {
+                    self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                }
                 self.counters.record_resize(size);
                 return;
             }
@@ -186,7 +236,9 @@ impl FrameSink for PipelineSink {
         let Some(mut buffer) = pool.take() else {
             // Every buffer is in flight: the encoder is behind. Allocating instead would turn a
             // stall into an out-of-memory kill in about twenty seconds.
-            self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+            if counting {
+                self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+            }
             return;
         };
 
@@ -196,7 +248,9 @@ impl FrameSink for PipelineSink {
             self.tx.try_send(CapturedFrame { size, buffer })
         {
             // The buffer rides back inside the error and returns to the pool as it drops.
-            self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+            if counting {
+                self.counters.frames_dropped.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -316,6 +370,9 @@ pub fn record(
 
     let counters = Arc::new(Counters::default());
     let (tx, rx) = bounded::<CapturedFrame>(POOL_FRAMES);
+    // Starts false: the pipeline is still being assembled, and the frames WGC delivers while
+    // it is are pre-roll, not recording. See `PipelineSink::counting`.
+    let counting = Arc::new(AtomicBool::new(false));
     let mut backend = new_backend()?;
     backend.start(
         &source,
@@ -324,10 +381,22 @@ pub fn record(
             size: None,
             tx,
             counters: Arc::clone(&counters),
+            counting: Arc::clone(&counting),
         }),
     )?;
 
-    let result = run_until_stopped(request, stop, observer, &rx, &counters, encoder);
+    let result = run_until_stopped(
+        request,
+        &source,
+        stop,
+        observer,
+        CaptureFeed {
+            rx: &rx,
+            counters: &counters,
+            counting: &counting,
+        },
+        encoder,
+    );
 
     // Stop capture before dealing with the encoder either way: leaving a WGC session alive after
     // a failure keeps the source's frame pool allocated for the life of the process.
@@ -340,12 +409,17 @@ pub fn record(
 /// The writer loop. Split out so `record` can always stop the backend, even on the error path.
 fn run_until_stopped(
     request: &RecordRequest,
+    source: &CaptureSourceId,
     stop: &AtomicBool,
     observer: &mut dyn FnMut(&CaptureStats, Duration),
-    rx: &Receiver<CapturedFrame>,
-    counters: &Counters,
+    feed: CaptureFeed<'_>,
     encoder: vrecnu_encode::H264Encoder,
 ) -> Result<RecordOutcome, EngineError> {
+    let CaptureFeed {
+        rx,
+        counters,
+        counting,
+    } = feed;
     let first = rx.recv_timeout(FIRST_FRAME_TIMEOUT).map_err(|_| {
         EngineError::Capture(CaptureError::NoFrames {
             after_ms: u64::try_from(FIRST_FRAME_TIMEOUT.as_millis()).unwrap_or(u64::MAX),
@@ -367,14 +441,43 @@ fn run_until_stopped(
     })?;
     let audio_pipe_path = audio.as_ref().map(AudioPipeline::pipe_path);
 
+    // Declared here for the same reason `audio` is: `Drop` closes the device, the bubble window
+    // and the pipe on every exit from this function, including the `?` two lines down.
+    // Burn the camera in *unless* the floating window is already going to be captured.
+    //
+    // A layered topmost window is composited onto the desktop by DWM, so a monitor capture
+    // records the bubble by itself. Overlaying it again draws two visibly offset circles --
+    // the captured copy sits wherever the window actually is, the overlay sits at the
+    // coordinates FFmpeg was handed at spawn, and a drag moves only the first. Measured on a
+    // real recording, not reasoned about: see `CameraSelection::burn_in`.
+    //
+    // A *window* capture is the opposite case: the bubble is a separate window and is not in
+    // it, so the burn-in is the only way the camera reaches the recording.
+    let bubble_is_already_captured =
+        request.bubble.is_some() && vrecnu_capture::is_monitor_source(source);
+    let mut camera = camera_pipeline::start(
+        &CameraSelection {
+            device: request.camera.clone(),
+            bubble: request.bubble,
+            burn_in: !bubble_is_already_captured,
+        },
+        request.fps,
+    )?;
+    let camera_pipe_path = camera.as_ref().and_then(CameraPipeline::pipe_path);
+
     let args = live_encode_args(&LiveEncodeParams {
         size,
         fps: request.fps,
         video_bitrate: request.video_bitrate,
         encoder,
         audio_pipe: audio_pipe_path.as_deref(),
-        camera_pipe: None,
-        camera_size: None,
+        camera_pipe: camera_pipe_path.as_deref(),
+        camera_size: camera_pipe_path
+            .as_ref()
+            .and(camera.as_ref().map(CameraPipeline::overlay_size)),
+        camera_position: camera_pipe_path
+            .as_ref()
+            .and(camera.as_ref().and_then(CameraPipeline::overlay_position)),
         output: &request.output,
     });
     tracing::info!(
@@ -382,6 +485,8 @@ fn run_until_stopped(
         fps = request.fps,
         encoder = encoder.ffmpeg_name(),
         audio = audio_pipe_path.is_some(),
+        camera = request.camera.is_some(),
+        camera_burned_in = camera_pipe_path.is_some(),
         "starting live encode"
     );
     let mut ffmpeg = FfmpegProcess::spawn(&request.ffmpeg, &args)?;
@@ -390,8 +495,15 @@ fn run_until_stopped(
     // here — the moment the first tick can actually be written. Audio's clock is this same
     // instant, not one it measures itself — see the audio_pipeline module doc comment for why.
     let started = Instant::now();
+    // The recording begins here, and so do the statistics.
+    counting.store(true, Ordering::Relaxed);
     if let Some(audio) = audio.as_mut() {
         audio.begin(started);
+    }
+    // The same instant, not one this module measures again: three inputs into one muxer means
+    // three clocks, and they only stay in step because none of them defines its own zero.
+    if let Some(camera) = camera.as_mut() {
+        camera.begin(started);
     }
     let mut pacer = Pacer::new(request.fps, 0);
     let max_frames = request
@@ -457,6 +569,12 @@ fn run_until_stopped(
 
     let elapsed = started.elapsed();
 
+    // And it is over as of *here* — the moment the pacer stopped asking for frames — not
+    // when this function returns. Everything below drains three inputs and waits for FFmpeg to
+    // flush, which takes seconds, and WGC keeps delivering throughout. See
+    // `PipelineSink::counting`.
+    counting.store(false, Ordering::Relaxed);
+
     if let Err(err) = outcome {
         return Err(match err {
             // A broken pipe only says our end noticed. FFmpeg's stderr says why.
@@ -468,27 +586,40 @@ fn run_until_stopped(
         });
     }
 
-    // Audio's EOF has to land *before* we wait for FFmpeg to exit, not after. `ffmpeg.finish()`
-    // only closes the video stdin; a muxer reading two live inputs has no reason to finalize and
-    // exit while the audio pipe is still open and being actively written to. Stopping it here —
-    // flush, disconnect, close, all inside `AudioPipeline::stop` — is audio's side of exactly
-    // the same "close rather than kill" finalization `ffmpeg.finish()` already does for video.
-    // Found by running it: without this, `finish()` never returned — not a deadlock inside
-    // FFmpeg or this process, just two inputs each waiting on something only the other one
-    // could have provided.
+    // Shutdown order across three inputs, and every part of it was learned by running it.
+    //
+    // 1. **Close the video stdin, without waiting.** FFmpeg is routinely a second or two behind
+    //    at this point (`h264_mf` is slow to reach full speed) and while it is behind it stops
+    //    draining the pipes. The camera writer, whose payload is a whole ~309 KB surface rather
+    //    than audio's 4 KB tick, then blocks inside `WriteFile`. Stopping it first would wait on
+    //    FFmpeg, which is waiting on this very close — each side holding what the other needs.
+    //    Closing stdin first lets FFmpeg drain, which unblocks both writers on their own.
+    // 2. **Close each pipe input.** A muxer reading a still-open input has no reason to finalize
+    //    (the M3 audio bug: `finish()` never returned). `stop()` flushes, disconnects and closes
+    //    — the pipes' side of the same "close rather than kill" finalization stdin just got.
+    // 3. **Then wait.** Every input has now ended, so FFmpeg writes its final fragment and
+    //    exits 0. Killing instead would cost the user the last seconds of what they recorded.
+    ffmpeg.close_stdin();
     if let Some(audio) = audio.as_mut() {
         audio.stop();
     }
-
-    // Closing stdin rather than killing: FFmpeg flushes the final fragment and exits 0. Killing
-    // here would cost the user the last couple of seconds of what they just recorded.
-    let progress = ffmpeg.finish()?;
+    if let Some(camera) = camera.as_mut() {
+        camera.stop();
+    }
+    let progress = ffmpeg.wait()?;
     let stats = collect_stats(counters, &pacer, progress);
 
+    // Both halves of the drop count, separately. `CaptureStats::frames_dropped` sums them for
+    // the caller, but the two mean different things -- ours is "a captured screen frame was
+    // lost", FFmpeg's is "the muxer discarded an input frame", and an overlay input makes the
+    // second one non-zero without a single screen frame having gone missing. Debugging the
+    // AGENTS.md §1 budget against the sum alone is how you chase a drop that never happened.
     tracing::info!(
         frames_written = stats.frames_written,
         frames_duplicated = stats.frames_duplicated,
         frames_dropped = stats.frames_dropped,
+        dropped_by_capture = counters.frames_dropped.load(Ordering::Relaxed),
+        dropped_by_ffmpeg = progress.drop_frames,
         elapsed_ms = elapsed.as_millis(),
         "recording finished"
     );
@@ -591,6 +722,7 @@ mod tests {
             size: None,
             tx,
             counters: Arc::clone(&counters),
+            counting: Arc::new(AtomicBool::new(true)),
         };
         let frame = vec![0u8; 16];
         for _ in 0..(POOL_FRAMES + 4) {
@@ -620,6 +752,7 @@ mod tests {
             size: None,
             tx,
             counters: Arc::clone(&counters),
+            counting: Arc::new(AtomicBool::new(true)),
         };
         let frame = vec![0u8; 64];
         sink.on_frame(FrameRef {
@@ -649,6 +782,7 @@ mod tests {
             size: None,
             tx,
             counters,
+            counting: Arc::new(AtomicBool::new(true)),
         };
         let frame = vec![0u8; 16];
         for _ in 0..(POOL_FRAMES * 3) {
@@ -663,6 +797,57 @@ mod tests {
             drop(rx.try_recv());
         }
         assert_eq!(sink.pool.as_ref().unwrap().capacity(), POOL_FRAMES);
+    }
+
+    #[test]
+    fn frames_arriving_after_the_recording_ends_are_not_counted_as_dropped() {
+        // Measured, not theoretical: shutting the camera pipe down is bounded by a five-second
+        // grace, and WGC keeps delivering the whole time. Counting those frames reported 48
+        // drops on a recording that lost nothing, which makes the AGENTS.md §1 budget
+        // unreachable by construction.
+        let counters = Arc::new(Counters::default());
+        let (tx, _rx) = bounded::<CapturedFrame>(POOL_FRAMES);
+        let counting = Arc::new(AtomicBool::new(true));
+        let mut sink = PipelineSink {
+            pool: None,
+            size: None,
+            tx,
+            counters: Arc::clone(&counters),
+            counting: Arc::clone(&counting),
+        };
+        let frame = vec![0u8; 16];
+        let deliver = |sink: &mut PipelineSink| {
+            sink.on_frame(FrameRef {
+                data: &frame,
+                stride: 8,
+                width: 2,
+                height: 2,
+                qpc: 0,
+            });
+        };
+
+        // Fill the channel and the pool so the very next frame would otherwise be a drop.
+        for _ in 0..(POOL_FRAMES + 2) {
+            deliver(&mut sink);
+        }
+        let dropped_while_recording = counters.frames_dropped.load(Ordering::Relaxed);
+        let seen_while_recording = counters.frames_in.load(Ordering::Relaxed);
+        assert!(dropped_while_recording > 0, "the pool should be exhausted");
+
+        counting.store(false, Ordering::Relaxed);
+        for _ in 0..20 {
+            deliver(&mut sink);
+        }
+        assert_eq!(
+            counters.frames_dropped.load(Ordering::Relaxed),
+            dropped_while_recording,
+            "frames after the end must not be counted as dropped"
+        );
+        assert_eq!(
+            counters.frames_in.load(Ordering::Relaxed),
+            seen_while_recording,
+            "frames after the end must not be counted as captured either"
+        );
     }
 
     #[test]
