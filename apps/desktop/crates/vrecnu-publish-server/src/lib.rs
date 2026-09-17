@@ -15,16 +15,24 @@
 //!   ephemeral port is not registered with Google and produces a confusing Google error
 //!   screen instead of a vrecnu one.
 //! - Never emit `Access-Control-Allow-Origin`.
+//!
+//! `deny` rather than `forbid` below: the crate has exactly one `unsafe` call, `setsockopt` for
+//! `SO_EXCLUSIVEADDRUSE` in `server::bind_exclusive`, which neither std nor socket2 exposes
+//! safely and which is what stops another local process hijacking a registered port.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+mod assets;
 mod error;
 mod range;
+mod server;
 mod token;
 
+pub use assets::{asset_key_for, Asset, PublishAssets};
 pub use error::PublishError;
 pub use range::{parse_range_header, RangeSpec};
+pub use server::{PublishServer, PublishSignal, RecordingToServe};
 pub use token::CapabilityToken;
 
 /// The five ports registered as Authorized JavaScript Origins on the OAuth client.

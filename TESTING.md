@@ -358,3 +358,25 @@ invocations and the default silently resolves to `\..\Cargo.toml`.
 | Trim / export on the desktop side | M7 (`render_args` is built and tested; nothing calls it) |
 | Installer, auto-update | M8 + a code-signing certificate |
 | RSS / CPU budgets as *budgets* | M9 — recording RSS is now measurable, idle RSS needs the shell |
+
+---
+
+## M5 — the loopback publish server
+
+Automated coverage is real here (`cargo test -p vrecnu-publish-server` drives an actual server
+over an actual socket), so this list is only what a machine cannot check.
+
+1. **The page renders.** `pnpm --filter @vrecnu/publish build`, then
+   `cargo run -p vrecnu-cli -- publish <some.mp4>`. A browser should open on
+   `http://127.0.0.1:47821/?t=…` and show "Publish to Google Drive" with the file name and size.
+   *A blank page means an asset was served with the wrong `Content-Type`* — check the console,
+   not the network tab.
+2. **The Drive round trip.** Needs a registered OAuth client (`docs/oauth-setup.md`). Connect,
+   upload, and confirm the terminal prints a `webViewLink` that actually opens.
+3. **All five ports busy.** Occupy 47821–47825 (`python -m http.server` five times will do) and
+   run `publish`. It must refuse with an actionable message naming the ports — **never** fall
+   back to another port, because Google would then reject the origin with its own error screen.
+4. **Close the browser mid-publish.** The CLI should keep waiting; `Ctrl-C` must leave no
+   listener behind (`Get-NetTCPConnection -LocalPort 47821 -State Listen`).
+5. **Publish twice in a row.** The second run should bind **47821 again**, not 47822. A creeping
+   port number means a session is leaking its listener.

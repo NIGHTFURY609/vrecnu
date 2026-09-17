@@ -53,6 +53,29 @@ impl ShellServices for CliShell {
         Err(unsupported("copy to the clipboard"))
     }
 
+    /// Hands the URL to the system default browser.
+    ///
+    /// Implemented rather than stubbed because it is the difference between `vrecnu-cli
+    /// publish` being a real way to exercise the Drive round trip and being a URL the operator
+    /// has to copy out of a terminal by hand.
+    ///
+    /// `cmd /C start "" <url>` with the empty title argument: `start` treats a lone quoted
+    /// first argument as the *window title*, so omitting it opens a console window instead of
+    /// the URL whenever the URL is quoted.
+    #[cfg(windows)]
+    fn open_external_url(&self, url: &str) -> Result<()> {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| {
+                AppError::recoverable(ErrorCode::Internal, "vrecnu could not open your browser.")
+                    .with_detail(err.to_string())
+                    .with_hint("Open the URL printed above by hand.")
+            })
+    }
+
+    #[cfg(not(windows))]
     fn open_external_url(&self, _url: &str) -> Result<()> {
         Err(unsupported("open a browser"))
     }

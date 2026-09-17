@@ -12,10 +12,34 @@ pub struct CapabilityToken {
 }
 
 impl CapabilityToken {
-    /// Wraps an already-generated token value.
+    /// 32 bytes of OS entropy, hex-encoded.
     ///
-    /// Generation lives with the caller so the randomness source stays in one place; 256 bits
-    /// from the OS CSPRNG, base64url-encoded, is the intended shape.
+    /// Not a UUID and not a counter: this string is the *only* thing standing between any local
+    /// process that can guess it and the user's recording, for as long as one publish session
+    /// lasts. 256 bits costs nothing here and removes the question entirely.
+    ///
+    /// Hex rather than the base64url the original sketch called for — the token travels in a
+    /// URL *and* in a JSON body, and hex needs no escaping in either.
+    ///
+    /// # Panics
+    ///
+    /// If the OS refuses to provide entropy. Continuing with a predictable token would be
+    /// worse than stopping, because nothing downstream could tell the difference.
+    #[must_use]
+    pub fn random() -> Self {
+        use std::fmt::Write as _;
+
+        let mut bytes = [0u8; 32];
+        getrandom::getrandom(&mut bytes).expect("the OS must be able to provide entropy");
+        let mut value = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            write!(value, "{byte:02x}").expect("writing to a String cannot fail");
+        }
+        Self { value }
+    }
+
+    /// Wraps an already-generated token value. Tests and the engine's replay path use it;
+    /// production goes through [`CapabilityToken::random`].
     #[must_use]
     pub fn from_value(value: impl Into<String>) -> Self {
         Self {
@@ -64,6 +88,15 @@ impl std::fmt::Debug for CapabilityToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_random_token_is_256_bits_of_hex_and_not_repeated() {
+        let a = CapabilityToken::random();
+        let b = CapabilityToken::random();
+        assert_eq!(a.as_str().len(), 64);
+        assert!(a.as_str().chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(!a.matches(b.as_str()));
+    }
 
     #[test]
     fn a_token_matches_itself() {

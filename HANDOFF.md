@@ -316,20 +316,90 @@ The M2/M3 pattern held: every one of these passed the unit tests.
     `cargo tree -i mozjpeg-sys` → "did not match any packages". The `Cargo.lock` entries for it
     are inert: reachable only via `--features mjpeg`.
 
+## M5 (loopback publish server) — complete and exercised against a real process
+
+The last piece of the record→link pipe that lives on our side of the browser. `tiny_http` on a
+hand-built socket, the Vite build of `packages/publish` embedded at compile time, and the
+engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it.
+
+### What was built
+
+- **`vrecnu-publish-server`** gained `build.rs` (embeds `packages/publish/dist`), `assets.rs`
+  (the lookup table — deliberately not a document root) and `server.rs` (the loop, routing, the
+  two security checks, Range, the three `POST /api/*` endpoints).
+- **`CapabilityToken::random`** — 32 bytes from `getrandom`, hex. Hex rather than base64url
+  because the token travels in a URL *and* a JSON body, and hex needs no escaping in either.
+- **`vrecnu-engine`** — a `PublishPump` thread that **owns** the `PublishServer`, turns
+  `PublishSignal` into `EngineEvent`, puts the share link on the clipboard, and releases the
+  port when it exits. Plus `Session::adopt_recording`, so a publish need not follow a record in
+  the same process.
+- **`vrecnu-cli publish <FILE>`** — a real command now, and `CliShell::open_external_url`
+  actually launches the browser. This is what makes the Drive round trip testable by a human
+  the moment an OAuth client exists.
+
+### Three things that were wrong until it was actually run
+
+1. **`shutdown()` did not release the port.** The `Arc<tiny_http::Server>` outlived it, so the
+   listener stayed bound until the whole struct dropped. Stopping the accept loop is not the
+   same as closing the socket.
+2. **Even after fixing that, release was asynchronous.** tiny_http's accept thread unwinds on
+   its own schedule, so `shutdown()` returned while the port was still bound. Invisible on an
+   idle machine; reproducible under `cargo test --workspace`, where the whole box is busy.
+   `shutdown` now re-binds the port to confirm the OS agrees, with a 1.5 s grace. The failure
+   this prevents is the *next* publish reporting `AllPortsBusy` with nothing listening.
+3. **The hand-rolled test client read a body from a `HEAD` response.** Not a server bug, but it
+   is exactly the mistake the publish page could make: a `HEAD` carries the `Content-Length` of
+   the body it *would* have sent — which is the whole reason `probeRangeSourceSize` uses it —
+   and no body.
+
+### Observed, 2026-09-04
+
+- **240 tests** workspace-wide (was 224), `clippy -D warnings` exit 0, `cargo fmt --check`
+  clean, shell-boundary check green across all 11 crates plus the `vrecnu-cli` link proof.
+- `tests/loopback.rs` drives a real `PublishServer` over a real socket: index and hashed asset,
+  `/api/session`, whole-file `GET`, `Range: bytes=100-199` → 206 with the exact bytes,
+  `bytes=99999-` → 416 with `Content-Range: bytes */4096`, wrong token → 403 everywhere, a
+  rebound `Host` → 421, a foreign `Origin` → 403, progress and completion POSTs, 410 after the
+  session ends, and the port free after shutdown.
+- **A real `vrecnu-cli publish` process**, driven from PowerShell: bound 47821, served the
+  actual Vite build (`index.html` 635 B, `index-DUP3FnI7.js` 237 KB, correct `Content-Type`s,
+  **no `Access-Control-Allow-Origin` on any response**), `/api/session` returned the metadata
+  with no on-disk path in it, `HEAD /r/<token>` reported `Content-Length: 5000` and
+  `Accept-Ranges: bytes`, a progress POST printed `uploaded 50%`, a completion POST printed the
+  share link, and the process exited with 47821 free.
+
+### Known, measured, not yet addressed
+
+- **The completion in that run carried a fake file id.** Nothing has touched Google. This is
+  still blocked on registering an OAuth client — see the open item below.
+- **The page has never been rendered in a browser against this server.** The bytes are right;
+  React mounting and fetching was not observed.
+- **`vrecnu-cli.exe` has not been re-measured** since it started embedding 237 KB of JS. The
+  ≤ 15 MB budget is in no danger, but the 0.93 MB figure is now stale.
+- **`CliShell` cannot copy to the clipboard** and says so. The engine logs the warning and
+  still reports the link, which is correct — a clipboard failure must not downgrade a
+  successful upload. Real clipboard delivery is an M6 question.
+- **Multi-range requests are declined**, not half-implemented: the server sends the whole file,
+  which RFC 9110 allows.
+
+---
+
 ### Next actions, in order
 
-1. **Window capture with a camera has not been exercised** — it is the one path that still burns
+1. **Register the OAuth client and run the round trip.** Everything on our side is now built
+   and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
+   highest-value action left in the project and no amount of code substitutes for it.
+2. **M6: the Tauri shell.** Fully unblocked — `RecorderEngine` is implemented end to end.
+3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
-2. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
-3. **M5: loopback publish server.** `tiny_http` not yet added; the pure logic is written and
-   tested, only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`.
+4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
 
-### Then M5–M9
+### Then M6–M9
 
 | M | Scope | Notes |
 |---|---|---|
-| M5 | Loopback publish server | `tiny_http` not yet added. Port negotiation, Range, token, Host/Origin checks are written and tested as pure logic; only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`. |
-| M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. |
+| M5 | Loopback publish server | **Done.** See the M5 section above. |
+| M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | `render_args()` already builds the command lines and is tested. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |
@@ -366,10 +436,12 @@ The M2/M3 pattern held: every one of these passed the unit tests.
 ## Open items carried forward
 
 - **ADR-005 action item 5 — code-signing certificate custody.** Unresolved and **blocks M8**.
-- **OAuth client not registered.** Blocks any real Drive round-trip. When you do it: a **Web
-  application** client, `drive.file` scope *only*, and register all five loopback origins
-  `http://127.0.0.1:47821` … `:47825` at the same time (ADR-002 action item 3 — cheap now,
-  annoying later).
+- **OAuth client not registered.** Blocks any real Drive round-trip, and is now the *only*
+  thing blocking it: as of M5 everything up to the browser calling Google works against a real
+  socket. When you do it: a **Web application** client, `drive.file` scope *only*, and register
+  all five loopback origins `http://127.0.0.1:47821` … `:47825` at the same time (ADR-002
+  action item 3 — cheap now, annoying later). Then:
+  `pnpm --filter @vrecnu/publish build` and `cargo run -p vrecnu-cli -- publish <FILE>`.
 - **The ≤150 MB idle RSS budget is at real risk with Tauri.** ADR-006 says to measure in M9
   and amend with numbers attached, and to reopen the ADR rather than reflexively raising the
   budget if the tray mitigation is not enough.

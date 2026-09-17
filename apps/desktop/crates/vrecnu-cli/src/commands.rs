@@ -4,13 +4,14 @@
 //! crate's dependency graph is load-bearing evidence rather than a convenience.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::Duration;
 
-use vrecnu_engine::{RecordRequest, SessionMachine};
+use vrecnu_engine::{RecordRequest, Session, SessionMachine};
 use vrecnu_publish_server::REGISTERED_PORTS;
-use vrecnu_shell_api::ShellServices;
+use vrecnu_shell_api::{EngineEvent, RecorderEngine, ShellServices};
 use vrecnu_types::{BubbleSpec, CaptureSourceId};
 
 use crate::shell::CliShell;
@@ -247,12 +248,91 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Command::Sources => sources(),
         Command::Cameras => cameras(),
         Command::Record(options) => record(&options),
-        // Publishing arrives in M5. Reporting that plainly beats a stub that pretends to upload
-        // and hands back a link to nothing.
-        Command::Publish { .. } => Err(CliError::Engine(
-            "publishing needs the loopback server, which lands in M5".into(),
-        )),
+        Command::Publish { path } => publish(&path),
     }
+}
+
+/// Serves one file to the publish page and waits for a share link.
+///
+/// This is the whole Phase 2 publish path with no shell in it: bind a registered loopback
+/// port, open the bundled page in the system browser, and wait for the page to POST a result
+/// back over that same origin. The engine never sees an OAuth token or a byte of the upload
+/// (AGENTS.md §5), and the fact that a *headless* binary can drive it is the ADR-006 proof --
+/// if this needed a webview, the boundary would already be gone.
+fn publish(path: &str) -> Result<(), CliError> {
+    let session = Session::new(Arc::new(CliShell));
+    let recording = session
+        .adopt_recording(Path::new(path))
+        .map_err(app_failure)?;
+    let events = RecorderEngine::subscribe(&session);
+    let handle = RecorderEngine::begin_publish(&session).map_err(app_failure)?;
+
+    println!(
+        "Serving {} ({:.1} MB) on port {}.",
+        recording.path.display(),
+        recording.size_bytes as f64 / (1024.0 * 1024.0),
+        handle.port
+    );
+    println!(
+        "
+Open this in your browser if it does not open by itself:
+
+  {}
+",
+        handle.url
+    );
+    if ShellServices::open_external_url(&CliShell, &handle.url).is_err() {
+        println!("(vrecnu could not launch a browser for you.)");
+    }
+    println!("Waiting for the publish page. Ctrl-C to give up.");
+
+    // Blocking on the event stream is right here and wrong in a GUI: this process has nothing
+    // else to do, and the shell-api contract only forbids the *engine* from blocking a caller
+    // that has to keep repainting.
+    for event in &events {
+        match event {
+            EngineEvent::PublishProgress { bytes_sent, total } => {
+                let percent = if total == 0 {
+                    0.0
+                } else {
+                    (bytes_sent as f64 / total as f64) * 100.0
+                };
+                println!("  uploaded {percent:.0}%");
+            }
+            EngineEvent::PublishDone { web_view_link, .. } => {
+                println!(
+                    "
+Done. Share link:
+
+  {web_view_link}
+"
+                );
+                return Ok(());
+            }
+            EngineEvent::PublishFailed { error } => {
+                return Err(CliError::Engine(error.to_string()));
+            }
+            _ => {}
+        }
+    }
+    // The sender is dropped when the pump exits, which without a terminal event means the
+    // server timed out or was torn down.
+    Err(CliError::Engine(
+        "the publish session ended without a result".into(),
+    ))
+}
+
+/// Flattens a boundary error into a CLI message, keeping the developer detail.
+fn app_failure(app: vrecnu_shell_api::AppError) -> CliError {
+    let mut text = app.to_string();
+    if let Some(detail) = &app.detail {
+        text.push_str(
+            "
+  detail: ",
+        );
+        text.push_str(detail);
+    }
+    CliError::Engine(text)
 }
 
 /// Flattens an engine failure into a CLI message, keeping the developer detail.
@@ -593,10 +673,16 @@ mod tests {
     }
 
     #[test]
-    fn unimplemented_commands_say_so_instead_of_pretending() {
-        // A stub that "succeeds" and writes nothing is worse than an honest refusal.
-        let err = run(&argv(&["publish", "clip.mp4"])).unwrap_err();
-        assert!(err.to_string().contains("M5"), "{err}");
+    fn publishing_a_file_that_is_not_there_fails_before_a_port_is_bound() {
+        // Not just "it errors": it must error *without* having bound one of the five
+        // registered ports, or a mistyped filename leaves the next publish reporting
+        // `AllPortsBusy`. This test would hang, not fail, if the order were wrong -- the
+        // command blocks on the event stream once a server is up.
+        let err = run(&argv(&["publish", "definitely-not-a-real-file.mp4"])).unwrap_err();
+        assert!(
+            err.to_string().contains("could not be read"),
+            "expected a read failure, got: {err}"
+        );
     }
 
     #[test]

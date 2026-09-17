@@ -10,3 +10,30 @@ description = "The loopback HTTP server that hands one recording to the publish 
 vrecnu-types.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+
+# A blocking, thread-per-request HTTP server with no async runtime and no TLS. The whole job
+# is one loopback origin serving one file to one page, and hyper/axum would drag tokio into a
+# process whose every other thread is a dedicated capture or encode thread.
+tiny_http = "0.12"
+
+# Builds the listening socket in pieces -- socket, setsockopt, bind, listen -- because
+# std::net::TcpListener::bind does all four at once and leaves no window to set
+# SO_EXCLUSIVEADDRUSE. See `server::bind_exclusive`.
+socket2 = { version = "0.5", features = ["all"] }
+
+# 32 bytes of OS entropy for the capability token. Nothing else in the crate needs randomness.
+getrandom = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# SO_EXCLUSIVEADDRUSE only. socket2 0.5 does not expose it and std cannot reach it; this is
+# the crate's one unsafe call site, and `server.rs` documents why it is not optional.
+windows = { version = "0.62", features = ["Win32_Networking_WinSock"] }
+
+[dev-dependencies]
+tempfile = "3"
+# The integration test parses the server's own JSON; a lib dependency is not in scope there.
+serde_json.workspace = true
