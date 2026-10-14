@@ -144,7 +144,11 @@ pub struct AppState {
 /// screen frames never leave the engine at all. A per-frame event across a WebView IPC
 /// boundary would spend more CPU on notification than on encoding.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum EngineEvent {
     /// The session moved between lifecycle states.
     StateChanged {
@@ -419,6 +423,19 @@ impl Default for PublishWindowHint {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_fields_are_camel_case_like_every_other_boundary_type() {
+        let json = serde_json::to_value(EngineEvent::PublishDone {
+            web_view_link: "link".into(),
+            file_id: "id".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"type": "publishDone", "webViewLink": "link", "fileId": "id"})
+        );
+    }
 
     #[test]
     fn fatal_errors_report_the_recording_as_lost() {
