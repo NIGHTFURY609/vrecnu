@@ -1,7 +1,7 @@
 # vrecnu — codebase mindmap
 
-**A map of what exists right now**, as of 2026-09-04 (commit `b91585f` + uncommitted work noted
-below, which now includes all of M5). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log. This
+**A map of what exists right now**, as of 2026-10-09 (M4 is on `main` at `b91585f`; M5 is
+committed as `01108e2` on branch `small-changes-idk`, not yet merged to `main`). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log. This
 document answers one question: *what is actually in this repository, and how much of it works?*
 
 ## Status legend
@@ -27,8 +27,9 @@ vrecnu/
 ├── packages/            TypeScript — Phase 1 PWA + the shared publish page
 │   ├── core/       🟩   recorder state machine (163 LOC)
 │   ├── storage/    🟩   StorageProvider + Google Drive, resumable upload (1,092)
-│   ├── publish/    ✅   the OAuth/upload page BOTH phases share (985) — now served,
-│   │                    fetched and driven end to end by the Rust loopback server
+│   ├── publish/    🟩   the OAuth/upload page BOTH phases share (985) — served by the
+│   │                    Rust loopback server (bytes checked over HTTP; never rendered
+│   │                    in a browser, never run against real Drive)
 │   ├── ui/         🟩   shadcn-style component seed (57)
 │   └── web/        🟩   the PWA: record, OPFS streaming, trim, download (3,992)
 │
@@ -38,7 +39,7 @@ vrecnu/
     ├── vrecnu-capture       ✅  Windows Graphics Capture + pacer/pool  (793)
     ├── vrecnu-audio         ✅  WASAPI loopback + mic, resample, mix  (1,147)
     ├── vrecnu-camera        ✅  webcam, opened once, fanned out        (768)
-    ├── vrecnu-bubble-win32  ✅  floating layered-window bubble       (1,210)
+    ├── vrecnu-bubble-win32  🟩  floating layered-window bubble; M1 checks pending (1,210)
     ├── vrecnu-encode        ✅  FFmpeg child process + arg building  (1,276)
     ├── vrecnu-namedpipe     ✅  Win32 named pipes (audio/camera → ffmpeg) (273)
     ├── vrecnu-publish-server ✅ loopback server, running and driven  (1,460)
@@ -63,10 +64,11 @@ re-admit Tauri without betting the project on it, and it is enforced twice in CI
 `scripts/check-shell-boundary.ps1`: a `cargo tree` scan of all 11 shell-free crates, **plus** a
 link-time proof that `vrecnu-cli` still builds with no Tauri in its graph.
 
-> `RecorderEngine` had **no implementation at all** until this session. The trait every shell
+> `RecorderEngine` had **no implementation at all** until M5. The trait every shell
 > sits on was a contract nothing fulfilled — the engine offered only blocking free functions,
 > which suit `vrecnu-cli` and are unusable from a UI that must keep repainting.
-> `vrecnu-engine/src/session.rs` now implements it, publish path included. **Uncommitted.**
+> `vrecnu-engine/src/session.rs` now implements it, publish path included. Committed on
+> `small-changes-idk` (`01108e2`), not yet merged to `main`.
 
 ### Capture → encode (the ✅ spine)
 
@@ -142,7 +144,7 @@ conversion, and now the `RecorderEngine` implementation.
 |---|---|
 | `web` | The PWA. Records, streams chunks to OPFS with flat memory, trims losslessly at WebM Cluster boundaries, downloads via `showSaveFilePicker`. Service worker, install/update prompts, generated icons. |
 | `storage` | `StorageProvider` interface + Google Drive. Resumable upload that **probes the server for the real offset** after a 308 rather than assuming `offset = end`, with jittered backoff and a persisted session URI. |
-| `publish` | The one OAuth implementation, shared by both phases — the PWA uses it directly, the desktop will load it in a web view. GIS/PKCE, no client secret, bring-your-own-credentials. |
+| `publish` | The one OAuth implementation, shared by both phases — the PWA uses it directly, the desktop will load it in a web view. GIS token client, no client secret, bring-your-own-credentials. |
 | `core`, `ui` | State machine and component seed. Small and stable. |
 
 **All of it is 🟩, not ✅.** Drive is exercised only against a fake. See the gap below.
@@ -155,12 +157,12 @@ conversion, and now the `RecorderEngine` implementation.
 |---|---|---|
 | **Phase 1** | The PWA | Code complete — **never run against real Drive** |
 | **M0** | Workspace + shell boundary | ✅ |
-| **M1** | Bubble window | ✅ code; measurements need your hardware |
+| **M1** | Bubble window | 🟩 code; the `TESTING.md` §1 measurements need your hardware (the bubble has since floated and recorded correctly in M4's run, but the always-on-top / focus / CPU / DPI checks are unrecorded) |
 | **M2** | Capture → encode | ✅ measured |
 | **M3** | WASAPI audio | ✅ measured |
 | **M4** | Camera + bubble | ✅ measured |
-| **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised |
-| **M6** | Shell + UI | ⬜ **nothing exists.** Fully unblocked now: `RecorderEngine` is implemented end to end, publish included |
+| **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised (the completion POSTs were fake), and the page has never been rendered in a browser against the server. On `small-changes-idk`, not yet merged to `main` |
+| **M6** | Shell + UI | ⬜ **no code yet.** Design drafted 2026-10-09 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`), awaiting approval. Engine side unblocked; building needs the MSVC toolchain back |
 | **M7** | Editing | 🟨 `render_args()` builds and tests the command lines; nothing runs them |
 | **M8** | Packaging, installer, updater | ⬜ **blocked** on a code-signing certificate |
 | **M9** | Budget gates | ⬜ |
@@ -170,9 +172,13 @@ conversion, and now the `RecorderEngine` implementation.
 
 ## What is verified, and what only looks like it
 
-**Observed passing** (2026-09-04, after M5): **240 Rust tests**, `clippy -D warnings` clean,
-`cargo fmt --check` clean, shell-boundary dependency check green across all 11 crates plus the
-`vrecnu-cli` link-time proof. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
+**Observed passing:** **240 Rust tests** on 2026-10-08 (against already-built test binaries;
+not re-run after the 2026-10-09 `doctor` edit), and `cargo check --workspace --all-targets` +
+`cargo fmt --check` on 2026-10-09. **Last observed clean on 2026-09-04, not re-run since:** `clippy -D warnings`,
+`cargo fmt --check`, and the shell-boundary dependency check across all 11 crates plus the
+`vrecnu-cli` link-time proof. Clippy could not be re-run on 2026-10-09: the dev machine's MSVC
+toolchain / Windows SDK was missing (`link.exe` not found) — an environment gap, not a code
+problem. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
 shape `AGENTS.md` §1 budgets at ≤ 15 MB — and has **not been re-measured** since the publish
 page (237 KB of JS) started being embedded in it.
 
@@ -182,8 +188,10 @@ bound 47821, served the real Vite build (`index.html` 635 B, `index-*.js` 237 KB
 metadata and no on-disk path, reported `Content-Length: 5000` to a `HEAD /r/<token>`, took a
 progress POST and a completion POST, printed the share link, and released the port.
 
-**Carried forward, not re-run since 2026-08-07:** 135 TypeScript tests across 5 packages; lint,
-typecheck and build green; bundle budgets at 82.4 KB gzip initial JS (55 % of 150 KB).
+**TypeScript, observed passing 2026-10-09:** `pnpm typecheck`, `pnpm lint` and `pnpm test`
+(145 tests across 5 packages — a count that moves as tests are added or removed); the web and
+publish Vite builds succeed; the web bundle budget holds at about 82 KB gzip initial JS (of
+150 KB).
 
 **Not verified by anything:**
 

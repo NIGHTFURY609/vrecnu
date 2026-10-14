@@ -1,8 +1,14 @@
 # ADR-001: Phase 2 is a pure-Rust desktop app, not Tauri
 
-**Status:** Accepted — **rationale amended by [ADR-005](005-installed-app-not-portable.md)**
+**Status:** **Superseded on the shell question by [ADR-006](006-phase-2-tauri-shell-with-swappable-core.md)** — rationale had been amended by [ADR-005](005-installed-app-not-portable.md)
 **Date:** August 2026
 **Deciders:** Maintainer (Jeswin Christie)
+
+> **Superseded by [ADR-006](006-phase-2-tauri-shell-with-swappable-core.md) (decided
+> 2026-08-06; this note added 2026-10-09) — read ADR-006 first.** ADR-006 reverses the *shell* decision below: Phase 2 now uses a Tauri v2 shell over
+> a shell-agnostic core, and "Tauri is not used" no longer holds. The supersession is narrow —
+> the part of this ADR saying the hard parts (capture, audio, the bubble) are native
+> regardless of shell still stands. The text below is kept as the historical record.
 
 > **Read this first (2026-08-03).** The *decision* below still holds: Phase 2 is a pure-Rust
 > native GUI and Tauri is still rejected. But the **reasoning has changed.** This ADR argues

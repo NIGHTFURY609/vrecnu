@@ -51,6 +51,10 @@ Ctrl+C to exit.
 window fed JPEG frames over raw IPC — but the camera must *still* be opened only once natively.
 Record whatever you find in ADR-006 action item 6.
 
+**Status as of 2026-10-09: still outstanding.** M2–M5 were built without waiting on this gate.
+The bubble has since floated and been recorded correctly in M4's `--bubble` run, but none of
+the checks in the table above have been recorded as run.
+
 ---
 
 ## 2. Phase 1 PWA
@@ -205,7 +209,7 @@ cargo run -p vrecnu-cli -- sources
 | `doctor` prints `capture backend ready (N sources)` | yes |
 | `doctor` prints an `h264 encoder` line naming `h264_mf` or `libopenh264` | yes |
 | `doctor` prints `audio backend     mic ready, system ready` (or `unavailable` per device) | yes |
-| `doctor` reports a real camera count, and still names M5 for the publish server | yes |
+| `doctor` reports a real camera count, and the publish-page asset status (it should no longer name a milestone for the publish server) | yes |
 | `sources` lists your displays with `*` on the primary, then windows | yes |
 | Display ids are **1-based** (`monitor:1`, never `monitor:0`) | yes |
 
@@ -353,7 +357,7 @@ invocations and the default silently resolves to `\..\Cargo.toml`.
 
 | Area | Blocked on |
 |---|---|
-| Desktop publish round-trip | M5 + an OAuth client |
+| Desktop publish round-trip | a registered OAuth client (M5, the loopback server, is done) |
 | Desktop UI | M6 |
 | Trim / export on the desktop side | M7 (`render_args` is built and tested; nothing calls it) |
 | Installer, auto-update | M8 + a code-signing certificate |

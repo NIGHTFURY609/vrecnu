@@ -1,6 +1,9 @@
 # M3 — WASAPI loopback + mic audio capture
 
-**Status:** approved, not yet planned/implemented
+**Status:** implemented — M3 done and measured against real hardware (2026-08-13); see the M3
+section of `HANDOFF.md` for results and the two bugs found only by recording for real.
+*Note (2026-10-09):* where the body below calls M7's `render_args` "shipped", read "built and
+unit-tested, but not yet called by anything" — M7 is only partial.
 **Scope:** HANDOFF.md's M3 only — system audio + microphone capture, mixed to 48 kHz stereo
 `s16le`, delivered to FFmpeg over a named pipe, wired into `vrecnu-engine::record()` and
 `vrecnu-cli`'s `--mic`/`--system` flags.

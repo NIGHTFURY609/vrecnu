@@ -8,8 +8,8 @@
  * Resolution order: a user-supplied id (persisted locally) beats the build-time default, so
  * someone running their own Google Cloud project can override a hosted build.
  *
- * There is no client *secret* anywhere in this flow, by design — GIS/PKCE is a public-client
- * flow and AGENTS.md §5 forbids shipping a secret in any bundle.
+ * There is no client *secret* anywhere in this flow, by design — the GIS token client is a
+ * public-client flow and AGENTS.md §5 forbids shipping a secret in any bundle.
  */
 
 const STORAGE_KEY = "vrecnu.google.clientId";

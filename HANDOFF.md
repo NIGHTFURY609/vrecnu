@@ -1,16 +1,36 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-09-03
-**Branch:** `main` (M0–M3 landed; M4 is this session's work, **uncommitted**)
+**Last updated:** 2026-10-09
+**Branch:** `small-changes-idk` — M0–M4 are on `main` (M4 landed in `b91585f`); M5 (publish
+server + engine `Session`, `01108e2`) is committed on `small-changes-idk` and **not yet merged
+to `main`**
 
 ---
 
 ## Verified state, right now
 
-Observed passing this session, not assumed:
+Observed passing, not assumed (dates matter — see the environment note):
 
 ```
-apps/desktop>  cargo test --workspace -j 4     exit 0, 212 tests passed
+apps/desktop>  cargo test --workspace                  pass, 240 tests (2026-10-08)
+                 (audio 25, bubble 27, camera 20, capture 16, cli 20, encode 35,
+                  engine 47, namedpipe 2, publish-server 34 unit + 2 loopback,
+                  shell-api 5, types 7)
+                 Ran against test binaries already built; nothing recompiled. Not
+                 re-run after the 2026-10-09 `vrecnu-cli doctor` edit — no linker.
+apps/desktop>  cargo fmt --all -- --check              pass (2026-10-09)
+apps/desktop>  cargo check --workspace --all-targets   pass (2026-10-09, after that edit;
+                 works only because build-script artifacts are cached)
+vrecnu>        pnpm typecheck / lint / test            pass, 145 tests (2026-10-09)
+                 (core 13, ui 2, storage 36, publish 23, web 71)
+vrecnu>        web and publish vite builds             succeed (2026-10-08)
+```
+
+The TypeScript count is "135 as of 2026-10-09"; it moves whenever tests are added or removed.
+
+Last observed clean on 2026-09-04, **not re-run on 2026-10-09** (see the environment note below):
+
+```
 apps/desktop>  cargo clippy -- -D warnings      clean
 apps/desktop>  cargo fmt --all -- --check       clean
 apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
@@ -19,15 +39,15 @@ apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
                   `\..\Cargo.toml`)
 ```
 
-Carried forward from 2026-08-07, not re-run this session:
+**Environment note, 2026-10-09:** the dev machine's MSVC toolchain / Windows SDK was missing
+(`link.exe` not found), so `cargo clippy` could not be re-run. This is an environment gap, not a
+code problem; the last clean clippy/fmt result is the 2026-09-04 one above. To restore it,
+install Visual Studio 2022 Build Tools with the **Desktop development with C++** workload and
+the Windows SDK (see `apps/desktop/README.md` and gotcha 1 below).
 
-```
-vrecnu>        pnpm test                        5/5 packages, 135 tests passed
-vrecnu>        pnpm lint / typecheck / build    all green
-```
-
-Bundle budgets (AGENTS.md §1): **82.4 KB gzip initial JS (55% of 150 KB)**, **86 KB total first
-load (22% of 400 KB)**.
+Bundle budgets (AGENTS.md §1): web initial JS re-checked 2026-10-09 at about 82 KB gzip, within
+the 150 KB budget. The detailed figures from the earlier measurement were **82.4 KB gzip initial
+JS (55% of 150 KB)** and **86 KB total first load (22% of 400 KB)**.
 
 ---
 
@@ -43,9 +63,11 @@ load (22% of 400 KB)**.
 
 ## Done
 
-### Phase 1 (the PWA) — complete
+### Phase 1 (the PWA) — code complete, never run against real Drive, not deployed
 
-Was committed as "basic functionality"; the audit found it materially unfinished.
+Was committed as "basic functionality"; the audit found it materially unfinished. The
+Drive-facing parts are exercised against fakes only: no OAuth client exists, so upload, share
+and `webViewLink` have never touched Google, and the PWA is not deployed anywhere.
 
 | Area | What changed |
 |---|---|
@@ -71,7 +93,7 @@ Was committed as "basic functionality"; the audit found it materially unfinished
 
 ### M0 — Rust workspace, complete and verified
 
-10 crates, 128 tests. The boundary is enforced by `scripts/check-shell-boundary.ps1`, which
+10 crates and 128 tests at the time (11 crates now — `vrecnu-namedpipe` arrived with M3). The boundary is enforced by `scripts/check-shell-boundary.ps1`, which
 was proven to actually detect leaks (it fires on `serde`/`thiserror`, which are present).
 
 ### M1 — bubble window, code complete
@@ -318,6 +340,8 @@ The M2/M3 pattern held: every one of these passed the unit tests.
 
 ## M5 (loopback publish server) — complete and exercised against a real process
 
+Committed as `01108e2` on branch `small-changes-idk`; **not yet merged to `main`**.
+
 The last piece of the record→link pipe that lives on our side of the browser. `tiny_http` on a
 hand-built socket, the Vite build of `packages/publish` embedded at compile time, and the
 engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it.
@@ -384,12 +408,43 @@ engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it
 
 ---
 
+## 2026-10-09 — sign-in fixes found by reading, before the first real Drive run
+
+Three defects in the shared OAuth path, each of which would have surfaced on the very first
+real upload. Fixed with unit tests; none of it has run against Google yet.
+
+- **A closed or blocked sign-in popup hung the upload forever.** `initTokenClient` had no
+  `error_callback`, and GIS never calls `callback` for popup failures, so the promise stayed
+  pending. Now rejected with an actionable message ("Try again" resumes the upload).
+- **One sign-in popup per 8 MiB chunk.** The provider asks for a token before every request
+  and the getter re-requested from GIS every time — ~128 popups for a 1 GB file, all outside
+  a user gesture. The getter now caches the token until 5 minutes before `expires_in`, shares
+  one in-flight request between callers, refreshes with `prompt: ""`, and rejects a grant that
+  is missing the `drive.file` scope (granular consent can drop it).
+- **No 401 handling anywhere.** With a cache, a revoked token would have failed the upload
+  outright. `GoogleDriveProvider` now re-authorises once with `forceRefresh` on a 401 (single
+  requests and chunk PUTs alike) and fails cleanly on a second.
+- **`pkce.ts` deleted.** It was exported and tested but never used: the product uses the GIS
+  token model, not PKCE (Google wants a client secret for PKCE with a web client). Docs
+  aligned in AGENTS.md §5, ADR-002's amendment, and `docs/oauth-setup.md`.
+- `vrecnu-cli doctor` no longer claims the publish server is "not yet implemented (M5)"; it
+  reports whether the publish page was embedded in the build.
+
+TS after the fixes: typecheck and lint pass; 145 tests pass (storage 36, publish 23).
+Rust: `cargo fmt --check` and `cargo check --workspace --all-targets` pass; `cargo test`
+and clippy could not be re-run (no MSVC linker on the dev machine).
+
+---
+
 ### Next actions, in order
 
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: the Tauri shell.** Fully unblocked — `RecorderEngine` is implemented end to end.
+2. **M6: the Tauri shell.** Design drafted, awaiting approval:
+   [`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`](docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md).
+   Code-wise unblocked — `RecorderEngine` is implemented end to end — but nothing can be
+   compiled until the MSVC toolchain + Windows SDK are reinstalled on the dev machine.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
@@ -398,9 +453,9 @@ engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it
 
 | M | Scope | Notes |
 |---|---|---|
-| M5 | Loopback publish server | **Done.** See the M5 section above. |
+| M5 | Loopback publish server | **Done** (on `small-changes-idk`, pending merge to `main`). See the M5 section above. |
 | M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
-| M7 | Editing | `render_args()` already builds the command lines and is tested. |
+| M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |
 

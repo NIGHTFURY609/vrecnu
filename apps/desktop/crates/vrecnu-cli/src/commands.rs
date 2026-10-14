@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use vrecnu_engine::{RecordRequest, Session, SessionMachine};
-use vrecnu_publish_server::REGISTERED_PORTS;
+use vrecnu_publish_server::{PublishAssets, REGISTERED_PORTS};
 use vrecnu_shell_api::{EngineEvent, RecorderEngine, ShellServices};
 use vrecnu_types::{BubbleSpec, CaptureSourceId};
 
@@ -512,7 +512,14 @@ fn doctor() {
         Ok(cameras) => println!("camera backend    ready ({} cameras)", cameras.len()),
         Err(err) => println!("camera backend    unavailable ({err})"),
     }
-    println!("publish server    not yet implemented (M5)");
+    // A build made before `packages/publish` was built still compiles, but cannot publish;
+    // say so here rather than at the end of someone's first recording.
+    match PublishAssets::embedded() {
+        Ok(assets) => println!("publish page      embedded ({} files)", assets.len()),
+        Err(err) => println!(
+            "publish page      missing: {err} (run `pnpm --filter @vrecnu/publish build`, then rebuild)"
+        ),
+    }
     println!();
     println!("This binary links the whole vrecnu engine with no GUI framework present,");
     println!("which is what keeps the shell swappable. See read_this_idiot.md.");

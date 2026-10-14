@@ -21,8 +21,8 @@ export interface CredentialsPanelProps {
  * Bring-your-own-credentials (AGENTS.md §5). A user running their own Google Cloud project
  * pastes their client id here instead of trusting ours — the same posture rclone takes.
  *
- * No client secret is ever requested: this is a GIS/PKCE public-client flow, and §5 forbids
- * a secret in any shipped bundle.
+ * No client secret is ever requested: the GIS token client is a public-client flow, and §5
+ * forbids a secret in any shipped bundle.
  */
 export function CredentialsPanel({
   buildTimeClientId,

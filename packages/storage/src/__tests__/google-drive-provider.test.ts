@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GoogleDriveProvider } from "../google-drive-provider";
+import { GoogleDriveProvider, type AccessTokenRequest } from "../google-drive-provider";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -67,6 +67,28 @@ describe("GoogleDriveProvider", () => {
     const provider = new GoogleDriveProvider({ getAccessToken });
     await provider.uploadResumable(new Blob(["x"]), { name: "a.mp4", mimeType: "video/mp4" });
     expect(getAccessToken).toHaveBeenCalled();
+  });
+
+  it("re-authorises once with a fresh token when a request is rejected with 401", async () => {
+    const getToken = vi.fn(async (request?: AccessTokenRequest) => (request?.forceRefresh ? "fresh-token" : "stale-token"));
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        expect(init.headers).toMatchObject({ Authorization: "Bearer fresh-token" });
+        return jsonResponse({ id: "perm-1" });
+      })
+      .mockResolvedValueOnce(jsonResponse({ webViewLink: "https://drive.google.com/file/d/file-1/view" }));
+
+    const provider = new GoogleDriveProvider({ getAccessToken: getToken });
+    await expect(provider.createShareLink("file-1")).resolves.toBe("https://drive.google.com/file/d/file-1/view");
+    expect(getToken).toHaveBeenCalledWith({ forceRefresh: true });
+  });
+
+  it("does not loop when the fresh token is rejected too", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    const provider = new GoogleDriveProvider({ getAccessToken });
+    await expect(provider.createShareLink("file-1")).rejects.toThrow(/401/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("throws a clear error when the resumable session init returns no Location header", async () => {

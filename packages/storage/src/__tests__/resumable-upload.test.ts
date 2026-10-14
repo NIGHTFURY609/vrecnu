@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { GoogleDriveProvider, parseRangeEnd } from "../google-drive-provider";
+import { GoogleDriveProvider, parseRangeEnd, type AccessTokenRequest } from "../google-drive-provider";
 import { UploadError, type ResumableSession } from "../storage-provider";
 import { FakeDrive, type FakeDriveOptions } from "./fake-drive";
 
@@ -163,6 +163,49 @@ describe("resume after failure", () => {
     await expect(
       provider.uploadResumable(makeFile(1024), { name: "a.webm", mimeType: "video/webm" }),
     ).rejects.toMatchObject({ sessionExpired: true });
+  });
+
+  it("re-authorises once and resends the chunk when Drive rejects the token mid-upload", async () => {
+    // The token getter caches; a revoked or early-expired token must not cost the upload.
+    const drive = new FakeDrive({ failChunkAttempts: [{ attempt: 2, status: 401 }] });
+    const getAccessToken = vi.fn<(request?: AccessTokenRequest) => Promise<string>>(async () => "fake-token");
+    const provider = makeProvider(drive, { getAccessToken });
+    const { fileId } = await provider.uploadResumable(makeFile(), { name: "a.webm", mimeType: "video/webm" });
+    expect(fileId).toBe("file-complete");
+    expect(drive.received).toBe(FILE_SIZE);
+    expect(getAccessToken.mock.calls.filter(([request]) => request?.forceRefresh)).toHaveLength(1);
+  });
+
+  it("fails on a blocked sign-in during a re-probe instead of retrying it as a network fault", async () => {
+    // Swallowing it would lose the user-facing reason and open a second, non-gesture popup.
+    const drive = new FakeDrive({ networkErrorAttempts: [1] });
+    let calls = 0;
+    const getAccessToken = vi.fn(async () => {
+      calls++;
+      if (calls === 3) {
+        throw new Error("The browser blocked the Google sign-in window.");
+      }
+      return "fake-token";
+    });
+    const provider = makeProvider(drive, { getAccessToken });
+    await expect(
+      provider.uploadResumable(makeFile(), { name: "a.webm", mimeType: "video/webm" }),
+    ).rejects.toThrow(/blocked the Google sign-in/);
+    expect(getAccessToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails instead of looping when the fresh token is rejected too", async () => {
+    const drive = new FakeDrive({
+      failChunkAttempts: [
+        { attempt: 1, status: 401 },
+        { attempt: 2, status: 401 },
+      ],
+    });
+    const provider = makeProvider(drive);
+    await expect(
+      provider.uploadResumable(makeFile(1024), { name: "a.webm", mimeType: "video/webm" }),
+    ).rejects.toThrow(/401/);
+    expect(drive.putAttempts).toBe(2);
   });
 });
 

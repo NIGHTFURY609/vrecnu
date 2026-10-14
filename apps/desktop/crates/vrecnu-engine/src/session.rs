@@ -24,11 +24,11 @@
 //!
 //! ## What is honestly not implemented yet
 //!
-//! Several trait methods depend on milestones that have not landed. They return an `AppError`
+//! Several trait methods depend on work that has not landed. They return an `AppError`
 //! saying so rather than a plausible-looking empty success, because a shell that cannot tell
 //! "no cameras" from "camera enumeration is not written yet" will ship the wrong UI for it.
-//! Each one names the milestone: publishing is M5, rendering an edit is M7, and thumbnails and
-//! per-device audio selection have no milestone yet.
+//! Rendering an edit is M7; thumbnails and per-device audio selection have no milestone yet.
+//! Publishing (M5) is implemented: see `begin_publish` below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

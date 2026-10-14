@@ -1,9 +1,29 @@
 # ADR-002: Desktop publish page is served from a loopback HTTP origin
 
-**Status:** Accepted
+**Status:** Accepted — wording amended 2026-10-09 (OAuth flow is the GIS token client, not PKCE; the token is single-session; see below)
 **Date:** 2026-08-02
 **Deciders:** Maintainer (Jeswin Christie)
 **Relates to:** [ADR-001](001-phase-2-pure-rust-desktop.md)
+
+> **Amendment (2026-10-09) — the OAuth flow is the GIS token client, not PKCE.** The body
+> below refers to "one PKCE implementation" and to "PKCE / GIS token client". What is actually
+> implemented in `packages/publish` is the Google Identity Services **token client** (the
+> token model): a public client with no client secret, no refresh token and ~1-hour access
+> tokens. It is **not** authorization-code + PKCE, because Google requires a client secret at
+> the token endpoint for "Web application" clients — secretless PKCE is not available to a
+> static page. Read every "PKCE" below as "the GIS token client".
+>
+> **The conclusion stands unchanged.** The GIS token request is origin-checked against the
+> client's Authorized JavaScript Origins exactly as described in Context, so the loopback-origin
+> requirement, the five registered ports and the same-origin/no-CORS model apply as written;
+> there is still exactly one OAuth implementation, shared by the PWA and the desktop publish
+> page, and still no client secret in any bundle. Only the name of the flow in the reasoning
+> was wrong.
+>
+> **Also read "one-time token" below as "single-session token"**, as
+> [ADR-006](006-phase-2-tauri-shell-with-swappable-core.md) clarified: the recording endpoint is
+> fetched many times (Range windows, `<video>` preview), so the capability is scoped to one
+> recording and one publish session and invalidated on completion, cancel or timeout.
 
 ## Context
 

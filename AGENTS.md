@@ -52,9 +52,9 @@ revision policy: [ADR-004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md).
 | Recording CPU overhead, 1080p30 | ≤ 10% of one core above baseline capture cost |
 | Dropped frames, 1080p30, 5-minute recording | 0 |
 
-These numbers were set before the scaffold existed and **are expected to be revised once
-real builds can be measured** — revise them via an ADR amendment with measurements attached,
-not by quietly ignoring them.
+These numbers were set before there were real builds to measure and **are expected to be
+revised once they can be** (ADR-006 owes the desktop RSS measurement in M9) — revise them via
+an ADR amendment with measurements attached, not by quietly ignoring them.
 
 ---
 
@@ -64,14 +64,16 @@ Work is phased on purpose. **Do not build a later phase's features into an earli
 
 - **Phase 1 — Web app (PWA).** Chromium-on-Windows first. Screen + webcam + mic/system
   audio, basic **trim only**, full Drive→link flow. Static-hosted, no backend.
-- **Phase 2 — Installed desktop app (pure Rust — see ADR-001 + [ADR-005](docs/adr/005-installed-app-not-portable.md)).** Per-user installer, no admin rights, **auto-update**, code-signed. Native Rust GUI
-  (`egui`/`Slint`/`iced`), real floating webcam bubble, native system audio,
-  FFmpeg-powered editing (brightness/audio/trim). **Does NOT reuse the Phase 1 React
-  frontend** — the recorder UI is native Rust. The one shared artifact is the web
-  "connect & upload" page, which the desktop opens in a web view to publish (§5). Google
-  Drive OAuth and upload are **not** implemented in the Rust app at all.
-- **Phase 3 — Dedicated desktop.** Timeline editor, multi-provider storage, effects,
-  auto-update.
+- **Phase 2 — Installed desktop app (Tauri v2 shell over a shell-agnostic pure-Rust core — see [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md), which supersedes ADR-001 on the shell question, + [ADR-005](docs/adr/005-installed-app-not-portable.md)).** Per-user installer, no admin rights, **auto-update**, code-signed. Capture, audio, camera, encode, publish server and orchestration are native Rust crates with
+  **zero Tauri dependencies**; the Tauri shell (`vrecnu-shell-tauri`, milestone M6 — **planned,
+  not started**) is only the window/tray/UI around them, and reuses `packages/ui` for its
+  recorder chrome. Real floating webcam bubble (raw Win32), native system audio,
+  FFmpeg-powered editing (brightness/audio/trim). The one artifact shared with the web side
+  by construction is the "connect & upload" page, which the desktop opens in a web view (or
+  the system browser) to publish (§5). Google Drive OAuth and upload are **not** implemented
+  in the Rust app at all.
+- **Phase 3 — Dedicated desktop.** Timeline editor, multi-provider storage, effects.
+  *(Auto-update moved up to Phase 2 — ADR-005.)*
 
 **Hard rule:** No FFmpeg / `ffmpeg.wasm`-heavy editing pipeline in Phase 1. Web editing is
 limited to trim. Deep brightness/audio work is Phase 2 (native FFmpeg). Building it twice
@@ -86,12 +88,12 @@ is forbidden waste.
 | Language | **TypeScript, strict mode** | No plain `.js`/`.jsx` source. No `any` without an inline justification comment. |
 | UI | **React 19 + Vite** | Shared component lib in `packages/ui`. |
 | Styling | **Tailwind CSS + shadcn/ui** | No competing CSS-in-JS runtime libs. |
-| State | **Zustand** *(when shared state is actually needed)* | Do not add Redux/MobX/etc. The recorder currently keeps its state local to `useRecordingEngine`, so no store is installed — add Zustand when state genuinely needs sharing, not before (§3's "when in doubt, don't add it"). |
+| State | **React state/hooks; Zustand only if shared state is ever needed** | Zustand was removed because nothing imported it — the recorder keeps its state local to `useRecordingEngine`, so **no store is installed today**. Add Zustand (not Redux/MobX/etc.) when state genuinely needs sharing, not before (§3's "when in doubt, don't add it"). |
 | Package manager | **pnpm** (workspaces) | **NEVER** run `npm install` or `yarn` — it will corrupt the lockfile. Only `pnpm`. |
 | Monorepo | **Turborepo** | Respect package boundaries (see §4). |
-| Desktop shell / GUI | **Tauri v2**, over a shell-agnostic core ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)) | **Electron is forbidden.** Tauri is permitted again — ADR-006 supersedes ADR-001 on the shell question only. **Every Tauri dependency must live in `vrecnu-shell-tauri` and nowhere else**; the headless `vrecnu-cli` shell is built in CI as a link-time proof of that. `egui`/`Slint`/`iced` remain the documented fallback. |
+| Desktop shell / GUI | **Tauri v2**, over a shell-agnostic core ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)) | **Electron is forbidden.** Tauri is permitted again — ADR-006 supersedes ADR-001 on the shell question only. **Every Tauri dependency must live in `vrecnu-shell-tauri` (M6 — planned, the crate does not exist yet) and nowhere else**; the headless `vrecnu-cli` shell is built in CI as a link-time proof of that. `egui`/`Slint`/`iced` remain the documented fallback. |
 | Desktop bubble window | **Raw Win32 layered window** (`windows` crate + `tiny-skia`) | Not a second Tauri webview: that would force the camera open twice, which hard-fails on virtual/OEM devices *after* the user hits record. Survives a shell swap unchanged. |
-| Native capture | `scap` / `windows-capture` (Rust) | Phase 2+ only. |
+| Native capture | **`windows-capture`** (Windows Graphics Capture); audio via **`wasapi`**; camera via **`nokhwa`** | Phase 2+ only. These are what shipped (`vrecnu-capture`, `vrecnu-audio`, `vrecnu-camera`); `scap`/`cpal` were earlier candidates. |
 | Encode/edit (desktop) | **FFmpeg as a bundled sidecar — separate child process ONLY** | **Never link FFmpeg into our binary** (`ffmpeg-next`/`ffmpeg-sys`/any bindings are forbidden — we are MIT, FFmpeg is LGPL/GPL; see [ADR-004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md)). Prefer an LGPL build, stripped to the codecs/filters we use, ≤ 25 MB. **H.264 encode is `h264_mf`, not `libx264`** — `libx264` requires `--enable-gpl` and cannot exist in an LGPL build ([ADR-007](docs/adr/007-ffmpeg-h264-encoder-and-licensing.md)). Document version + `configure` line in NOTICE. Bundle at package time; do not commit the binary. |
 | Cloud/storage | Google **Drive REST v3** via `fetch` + GIS | No heavyweight Google SDK. Behind the `StorageProvider` interface. **Implemented in the web/TS code only** — the Rust app does not call Drive (see §5). |
 
@@ -127,7 +129,7 @@ Every non-obvious rule in this file is backed by an ADR in **`docs/adr/`**. Curr
 
 | ADR | Decision | Governs |
 |---|---|---|
-| [001](docs/adr/001-phase-2-pure-rust-desktop.md) | Phase 2 is pure Rust, not Tauri | §2, §3 |
+| [001](docs/adr/001-phase-2-pure-rust-desktop.md) | Phase 2 is pure Rust, not Tauri — **superseded by 006 (shell question only)**; the native-capture reasoning still stands | §2, §3 |
 | [002](docs/adr/002-desktop-publish-loopback-origin.md) | Publish page served from a loopback HTTP origin | §5 |
 | [003](docs/adr/003-phase-1-capture-pipeline.md) | Chunk-to-disk, container ladder, composite clock | §6 |
 | [004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md) | FFmpeg as a separate process; size/CPU budgets | §1, §3 |
@@ -145,15 +147,28 @@ Substituting a fixed choice above requires a **new ADR**, not an edit to an exis
 packages/                       # TypeScript / pnpm workspace (web side)
   core/      # shared TS: recorder state machine, domain types. PLATFORM-AGNOSTIC.
   storage/   # StorageProvider interface + providers (GoogleDriveProvider first).
-  ui/        # shared React components. Browser-safe only. Used by the PWA, the publish
-             #   page, AND the Phase 2 desktop UI again (ADR-006 restored this).
-  publish/   # the "connect & upload" page (PKCE + browser→Drive upload).
+  ui/        # shared React components. Browser-safe only. Used by the PWA and the publish
+             #   page, and by the Phase 2 desktop shell's chrome (ADR-006 restored this;
+             #   lands with M6 — the shell does not exist yet).
+  publish/   # the "connect & upload" page (GIS token client + browser→Drive upload).
              #   loaded by BOTH the PWA and the Phase 2 desktop web view.
   web/       # Phase 1 PWA. Browser capture engine lives here.
 apps/
-  desktop/   # Phase 2 Cargo workspace. Tauri v2 shell + Tauri-free core crates (ADR-006).
-             #   egui/winit UI, scap capture, cpal audio, ffmpeg sidecar,
-             #   wry publish web view + loopback file bridge.
+  desktop/   # Phase 2 Cargo workspace (ADR-006): Tauri-free core crates + a replaceable shell.
+    scripts/ #   check-shell-boundary.ps1 — the CI gate for the Tauri boundary.
+    crates/
+      vrecnu-types/           domain vocabulary. No platform dependencies.
+      vrecnu-shell-api/       THE BOUNDARY: shell traits, events, AppError.
+      vrecnu-capture/         screen capture (`windows-capture`/WGC) + the frame pacer.
+      vrecnu-audio/           WASAPI loopback + mic (`wasapi`), and the silence filler.
+      vrecnu-camera/          sole owner of the camera device (`nokhwa`).
+      vrecnu-encode/          the FFmpeg sidecar (child process, never linked).
+      vrecnu-namedpipe/       Windows named pipe that carries audio to ffmpeg.
+      vrecnu-bubble-win32/    the floating webcam bubble, raw Win32.
+      vrecnu-publish-server/  loopback HTTP server (`tiny_http`) for the publish page + recording.
+      vrecnu-engine/          orchestration. Owns the threads, knows no shell.
+      vrecnu-cli/             headless shell — the swappability proof. Keep it green.
+      vrecnu-shell-tauri/     PLANNED (M6), not started — the ONLY crate allowed to name Tauri.
 ```
 
 **Boundary rules (strict):**
@@ -161,15 +176,19 @@ apps/
 - `packages/core` and `packages/storage` MUST NOT import browser-only or Node-only APIs.
   Keep them pure TS + web-standard APIs (`fetch`, Web Crypto) so they run in the browser
   (PWA and desktop web view alike).
-- Platform-specific capture code (`getDisplayMedia` in web; `scap`/WASAPI in the Rust
-  desktop crate) lives in its own app, **never** in shared packages.
+- Platform-specific capture code (`getDisplayMedia` in web; Windows Graphics Capture/WASAPI
+  in the Rust desktop crates) lives in its own app, **never** in shared packages.
 - **The web/UI code talks to storage only through the `StorageProvider` interface.** No
   direct `drive.googleapis.com` calls in UI or recording code — Drive is one provider
   implementation, not a hardcoded dependency.
-- **The Rust desktop crate does NOT implement or call Drive at all.** It records, edits,
-  and exposes the finished local file to the publish web view (§5). All OAuth and upload
+- **The Rust desktop crates do NOT implement or call Drive at all.** They record, edit,
+  and expose the finished local file to the publish web view (§5). All OAuth and upload
   happen in `packages/publish` running in that web view. Do not add a Drive/OAuth/HTTP-to-
-  Google dependency to the Rust crate.
+  Google dependency to any Rust crate.
+- **Only `vrecnu-shell-tauri` may name `tauri`, `tao`, `wry` or `webview2-com`** (ADR-006),
+  enforced by `apps/desktop/scripts/check-shell-boundary.ps1` in CI. Never put an
+  `if (window.__TAURI__)` branch in `packages/publish` — the share link returns to the engine
+  over `POST /api/complete` on the loopback origin, not Tauri IPC.
 
 ---
 
@@ -186,10 +205,16 @@ not relax them.
 - **Never read, list, or search the user's pre-existing Drive files.** We only write new
   recordings and manage files we created.
 - **No client secrets in the repo or shipped bundles.**
-  - Web/PWA **and** the Phase 2 desktop publish web view: use the GIS token client /
-    **PKCE** flow (public client, no secret). There is **one** OAuth implementation
-    (`packages/publish`); the desktop reuses it by loading that page in a web view. The
-    old native **loopback-redirect OAuth** flow is **not** used — do not add it.
+  - Web/PWA **and** the Phase 2 desktop publish web view: use the **Google Identity
+    Services (GIS) token client** — the token model, a public client with no secret, no
+    refresh token and ~1-hour access tokens. This is deliberately **not** authorization-code +
+    PKCE: Google requires a client secret at the token endpoint for "Web application"
+    clients, so secretless PKCE is not available to a static page. There is **one** OAuth
+    implementation (`packages/publish`); the desktop reuses it by loading that page in a web
+    view. The old native **loopback-redirect OAuth** flow is **not** used — do not add it.
+  - The token getter (`getAccessToken()`, §6) **caches the current token until shortly before it
+    expires**, then re-requests one via GIS. The **first** token request must originate from a
+    user gesture (a click) — otherwise popup blockers suppress Google's consent window.
   - Support a **bring-your-own-credentials** path (user supplies their own OAuth client),
     like rclone.
 - **Uploads MUST be resumable** (`uploadType=resumable`). A simple upload that dies on a
@@ -218,7 +243,10 @@ not relax them.
   - Serve **only the current recording** plus the bundled publish assets — never a directory,
     never any other file.
   - Bind to **`127.0.0.1` only** — never a network-facing listener.
-  - Gate the recording with a **one-time capability token** in the URL.
+  - Gate the recording with a **single-session capability token** in the URL — one capability,
+    scoped to one recording and one publish session, invalidated on completion, cancel or
+    timeout. (Not per-request "one-time": the endpoint is necessarily fetched many times —
+    Range windows, the `<video>` preview. See ADR-006's clarification.)
   - **Tear the server down** once publishing completes. A "serve the recordings folder on
     localhost" shortcut is forbidden.
   - **Do not add a CORS grant.** If you find yourself needing one, the origins have diverged
@@ -246,17 +274,19 @@ not relax them.
   - **Disk is not the bottleneck and never was:** 1080p30 is ~625 KB/s against storage that
     sustains hundreds of MB/s. If someone proposes buffering elsewhere for "performance",
     the premise is wrong — check `AGENTS.md` §7 before entertaining it.
-- **Container is chosen by feature detection, first match wins** — this supersedes the old
-  "default output is WebM" rule:
-  1. `video/mp4;codecs=avc1.42E01E,mp4a.40.2`
-  2. `video/webm;codecs=vp9,opus`
-  3. `video/webm;codecs=vp8,opus`
-  4. `video/webm`
+- **Container is chosen by feature detection, first match wins — and the ladder is
+  WebM-first until Drive preview seek is verified.** [ADR-003](docs/adr/003-phase-1-capture-pipeline.md)
+  §3.3 *prefers* MP4 but **forbids shipping the MP4-first ordering** until Chromium's
+  fragmented-MP4 output is verified to play *and seek* in Google Drive's preview player. That
+  verification has not happened, so the shipped ladder (`packages/core/src/types.ts`) is:
+  1. `video/webm;codecs=vp9,opus`
+  2. `video/webm;codecs=vp8,opus`
+  3. `video/webm`
+  4. `video/mp4;codecs=avc1.42E01E,mp4a.40.2`
 
-  Gate each with `MediaRecorder.isTypeSupported()`. **The MP4-first ordering is conditional
-  on verifying that Chromium's fragmented-MP4 output plays *and seeks* in Google Drive's
-  preview player.** If it does not, MP4 drops below WebM. Verify before shipping; do not
-  assume.
+  Gate each with `MediaRecorder.isTypeSupported()`. Only after the Drive check passes — and its
+  result is recorded in ADR-003 (action item 2) — may MP4 move to the top. Do not reorder on
+  assumption.
 - **Container metadata MUST be valid before upload.** `MediaRecorder` WebM output omits
   `Info/Duration` and `Cues`, so players report duration `Infinity` and the seek bar breaks —
   which ruins the shared link, i.e. the entire product. Patch the duration with a minimal
@@ -268,10 +298,11 @@ not relax them.
   rate to source FPS." If a clean composite still proves unreliable, record screen and camera
   as separate tracks and composite on export — do not ship a recorder that silently drops
   frames.
-- **`GoogleDriveProvider` must take a `getToken(): Promise<string>` callback, not a token
+- **`GoogleDriveProvider` must take a `getAccessToken(): Promise<string>` callback, not a token
   string.** GIS access tokens last ~1 hour with no refresh token; a large recording on a slow
   uplink can outlive one. The resumable session URI survives re-auth, so the upload loop must
-  be able to obtain a fresh token mid-upload.
+  be able to obtain a fresh token mid-upload. The getter itself caches the token until shortly
+  before expiry and re-requests via GIS after that (§5).
 - The live "floating webcam bubble over the whole desktop" is a **Phase 2 desktop-only**
   capability. Do not claim or fake it in the web app; there the bubble is composited into
   the recording and shown in the app's own preview only.
@@ -305,8 +336,9 @@ not relax them.
 - Any future analytics must be opt-in, anonymous, and never include recording content.
 - The **desktop update feed** (ADR-005) is static release metadata only. It must never
   accept uploads, and must never see recording content.
-- **Never commit secrets.** No OAuth secrets, API keys, tokens, or `.env` files. Store user
-  credentials/tokens via the OS-appropriate secure store (desktop) or session/PKCE (web).
+- **Never commit secrets.** No OAuth secrets, API keys, tokens, or `.env` files. GIS access
+  tokens are short-lived and session-scoped in the web page (held in memory, never written to
+  the repo or a bundle); the Rust app never handles an OAuth token at all (§4).
 - Add and respect `.gitignore` for `node_modules/`, `dist/`, `target/`, `.env*`,
   build output, and recordings.
 
@@ -314,28 +346,59 @@ not relax them.
 
 ## 8. Build, run & verify
 
-> **This repo is pre-scaffold.** Until `package.json`/`pnpm-workspace.yaml` exist, these are
-> the *intended* commands — update this section the moment the scaffold lands, and do not
-> run them against an empty repo.
+The repo is scaffolded and `.github/workflows/ci.yml` runs the commands below on every PR.
+Run the same ones locally before declaring work done.
+
+**TypeScript workspace** — repo root (pnpm ONLY):
 
 ```bash
-pnpm install            # bootstrap (pnpm ONLY)
-pnpm dev                # run the web app (Phase 1)
-pnpm --filter web build # build the PWA
-pnpm test               # unit tests
-pnpm lint && pnpm typecheck
-# Phase 2 desktop (pure Rust — Cargo, NOT `tauri` commands):
-cargo run    --manifest-path apps/desktop/Cargo.toml   # dev run
-cargo build  --release --manifest-path apps/desktop/Cargo.toml  # release exe (then package + sign)
-cargo fmt --check && cargo clippy -- -D warnings        # Rust lint/format
-cargo test   --manifest-path apps/desktop/Cargo.toml    # Rust unit tests
+pnpm install               # bootstrap (CI uses `pnpm install --frozen-lockfile`)
+pnpm dev                   # run the web app (Phase 1)
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build                 # builds the PWA (packages/web) AND the standalone publish page (packages/publish)
+pnpm --filter web budgets  # bundle budgets from §1 — run after `pnpm build`
 ```
+
+**Rust desktop workspace** — `apps/desktop`, run in **PowerShell (or cmd), not Git Bash**
+(Cargo commands, NOT `tauri` commands):
+
+```powershell
+cd apps/desktop
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --workspace
+./scripts/check-shell-boundary.ps1   # ADR-006 gate: dependency-graph scan + link-time proof that
+                                     #   vrecnu-cli builds with no Tauri. Runs in CI; do not delete it.
+cargo build --workspace
+cargo run -p vrecnu-cli -- help      # the headless shell; there is no Tauri shell yet (M6)
+```
+
+Desktop build traps (details in `apps/desktop/README.md`):
+
+- **Build the publish page first.** `vrecnu-publish-server/build.rs` embeds
+  `packages/publish/dist` into the binary at compile time, so run `pnpm build` (or just
+  `pnpm --filter @vrecnu/publish build`) **before** `cargo build`/`cargo run` for anything that
+  will publish. A missing `dist/` is *not* a build error — the workspace builds fine without
+  Node — but the server then returns `PublishError::AssetsMissing` at runtime. Rebuild the
+  page after changing `packages/publish`.
+- **Git Bash shadows the linker.** Its GNU `link` hides MSVC's `link.exe` and fails with a
+  misleading `link: extra operand`. Use PowerShell or cmd.
+- **The Windows SDK is required** — even `cargo check` links proc-macro crates and build
+  scripts. `LNK1181: cannot open input file 'kernel32.lib'` means the C++ desktop workload
+  (with the SDK) is not installed.
+- **`memory allocation of N bytes failed`** right after a Visual Studio/SDK install is
+  parallelism, not code: cap it with `cargo test --workspace -j 2` until the installer settles.
 
 **Verification is required before declaring work done:**
 
-- **Web/TS:** `pnpm typecheck` and `pnpm lint` must pass. No new type errors, no
+- **Web/TS:** `pnpm typecheck`, `pnpm lint` and `pnpm test` must pass (and `pnpm build` +
+  `pnpm --filter web budgets` if you touched bundle size). No new type errors, no
   `// @ts-ignore` without a reason comment.
-- **Rust (desktop):** `cargo clippy -- -D warnings` and `cargo fmt --check` must pass.
+- **Rust (desktop):** `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --workspace` and
+  `./scripts/check-shell-boundary.ps1` must pass.
 - Add/adjust tests for logic you change (recorder state machine, storage provider, upload
   retry). The Drive upload + link flow is the product's critical path — cover it (it lives
   in `packages/publish`).
@@ -362,9 +425,10 @@ cargo test   --manifest-path apps/desktop/Cargo.toml    # Rust unit tests
 - ❌ `npm install` / `yarn` — pnpm only (for the TS workspace).
 - ❌ Electron. ❌ Naming `tauri`/`tao`/`wry`/`webview2-com` in any crate except
   `vrecnu-shell-tauri`, and ❌ deleting `vrecnu-cli` — it is the link-time proof that the
-  shell is still swappable (ADR-006). Formerly this line banned Tauri outright; Phase 2 was a
-  pure-Rust native GUI (ADR-001). A web view is allowed **only** for the publish step (§5).
-- ❌ Implementing Google Drive / OAuth / upload inside the Rust desktop crate — it lives in
+  shell is still swappable (ADR-006). Formerly this line banned Tauri outright (ADR-001).
+  Outside `vrecnu-shell-tauri`, a web view (or the system browser) exists **only** for the
+  publish step (§5).
+- ❌ Implementing Google Drive / OAuth / upload inside any Rust desktop crate — it lives in
   `packages/publish` and runs in the web view.
 - ❌ Serving the publish page from a `wry` custom URI scheme — Google rejects it as an OAuth
   origin (ADR-002). Loopback HTTP on a registered port only.
@@ -385,18 +449,19 @@ cargo test   --manifest-path apps/desktop/Cargo.toml    # Rust unit tests
 - ❌ Reading/listing the user's existing Drive files.
 - ❌ Routing recording bytes through any vrecnu server — upload is browser→Drive only.
 - ❌ Exposing the local file to the web view via anything broader than a single-file,
-  loopback-only, one-time-token, same-origin endpoint that is torn down after publish (§5).
-- ❌ Reintroducing the native loopback-**redirect OAuth** flow (PKCE in the web view now).
+  loopback-only, single-session-token, same-origin endpoint that is torn down after publish (§5).
+- ❌ Reintroducing the native loopback-**redirect OAuth** flow (the GIS token client in the
+  web page is the only OAuth path).
 - ❌ Committing secrets, tokens, or `.env`.
-- ❌ Client secrets in web/PWA bundles (use PKCE).
+- ❌ Client secrets in web/PWA bundles (the GIS token client is a public client — no secret).
 - ❌ Non-resumable uploads.
 - ❌ FFmpeg-heavy editing in the Phase 1 web app.
 - ❌ Platform-specific imports in `packages/core` / `packages/storage`.
 - ❌ Direct Drive API calls outside a `StorageProvider`.
 - ❌ Adding dependencies that fight the lightweight invariant without justification.
 - ❌ Any content telemetry.
-- ❌ Marking work "done" without typecheck + lint (TS) / clippy + fmt (Rust) + a real
-  functional check.
+- ❌ Marking work "done" without typecheck + lint + test (TS) / clippy + fmt + test + the
+  shell-boundary script (Rust) + a real functional check.
 
 When a task seems to require breaking one of these, **stop and ask the maintainer** rather
 than working around it.
