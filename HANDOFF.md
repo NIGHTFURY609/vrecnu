@@ -484,7 +484,6 @@ Observed, 2026-10-15:
 Known, not yet addressed:
 
 - The opener plugin's error detail may carry the capability-token URL into logs (revisit in S4).
-- `useEngine`'s snapshot dispatch should be guarded under React StrictMode.
 - Window capture sources report size 0x0 from `list_sources` (monitor sizes are correct); the S3 source picker needs real window sizes or must not rely on them.
 - Disk space on the dev machine ran out once: `apps/desktop/target/debug` measured 11.1 GB on 2026-10-15, and the Task 8 build failed with LNK1180 when N: reached 0 GB free; regenerable caches were cleared to recover. (`apps/desktop/target` is
   build output, ignored by git.)

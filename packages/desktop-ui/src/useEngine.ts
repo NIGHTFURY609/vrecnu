@@ -12,7 +12,9 @@ export function useEngine(): Store {
       .then(async (stop) => {
         if (cancelled) return stop();
         unlisten = stop;
-        dispatch({ kind: "snapshot", state: await getSnapshot() });
+        const state = await getSnapshot();
+        // A cleanup landing while the snapshot was in flight must not apply it to a newer mount.
+        if (!cancelled) dispatch({ kind: "snapshot", state });
       })
       .catch((err: unknown) => console.error("vrecnu: could not connect to the engine", err));
     return () => {
