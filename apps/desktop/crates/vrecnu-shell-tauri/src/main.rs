@@ -7,6 +7,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
+mod commands;
+#[cfg(test)]
+mod contract_tests;
 mod events;
 mod services;
 mod tray;
@@ -50,6 +53,12 @@ fn main() {
             tray::build(app.handle())?;
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_snapshot,
+            commands::list_sources,
+            commands::list_cameras,
+            commands::list_audio_devices
+        ])
         .build(tauri::generate_context!());
 
     let app = match app {
