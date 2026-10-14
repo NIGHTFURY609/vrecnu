@@ -9,6 +9,8 @@ they conflict, this file wins. Keep this file updated as the project evolves.
 > allowed to build it*. **`docs/adr/` is the source of truth for *why each rule exists*** —
 > if a constraint below looks arbitrary or inconvenient, read its ADR before working around
 > it. Most of these rules exist to avoid a bug or a legal problem we already found.
+> **`HANDOFF.md` is the source of truth for *where the project stands*** — and it must be
+> updated with every change that moves the project (§11).
 
 ---
 
@@ -462,6 +464,33 @@ Desktop build traps (details in `apps/desktop/README.md`):
 - ❌ Any content telemetry.
 - ❌ Marking work "done" without typecheck + lint + test (TS) / clippy + fmt + test + the
   shell-boundary script (Rust) + a real functional check.
+- ❌ Landing a change that moves the project without updating `HANDOFF.md`, the status of
+  record (§11), in the same change.
 
 When a task seems to require breaking one of these, **stop and ask the maintainer** rather
 than working around it.
+
+---
+
+## 11. Project status — one document of record
+
+**`HANDOFF.md` is the project's status of record.** It holds the verified state (every check
+with the date it was observed), each milestone's results and known issues, the open blockers,
+and the next actions. When anything else disagrees with it about *where the project stands*,
+`HANDOFF.md` is right and the other document is stale.
+
+- **Update it every time the project moves**, in the same commit/PR as the change: code that
+  lands, a milestone or slice starting or finishing, a verification result (pass *or* fail),
+  a decision, a new blocker or a cleared one, a branch merge. At minimum touch "Last
+  updated", "Verified state, right now" and "Next actions", plus the relevant milestone
+  section. A change that leaves `HANDOFF.md` describing the old state is not done.
+- **Record only what was observed.** Each verification line carries its date; never carry a
+  result forward to a later date it was not re-run on, and say so when something could not
+  be run.
+- **Keep the summaries in step.** `mindmap.md` (milestone ledger + "What is verified"),
+  the status table in `README.md`, and the Status section of `apps/desktop/README.md` are
+  summaries of `HANDOFF.md`; update whichever ones the change affects alongside it.
+- **Every new plan, spec or design doc** (e.g. under `docs/superpowers/specs/`) links
+  `HANDOFF.md` as the status of record in its header and does not keep its own running
+  status beyond a one-line Draft/Approved/Implemented marker. Progress against the plan is
+  recorded in `HANDOFF.md`.

@@ -1,7 +1,8 @@
 # vrecnu — codebase mindmap
 
-**A map of what exists right now**, as of 2026-10-09 (M4 is on `main` at `b91585f`; M5 is
-committed as `01108e2` on branch `small-changes-idk`, not yet merged to `main`). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log. This
+**A map of what exists right now**, as of 2026-10-14 (M0–M5 are all on `main`; M5 merged via
+PR #5). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log and the
+**status of record**: this map summarises it and is updated in the same change (`AGENTS.md` §11). This
 document answers one question: *what is actually in this repository, and how much of it works?*
 
 ## Status legend
@@ -67,8 +68,8 @@ link-time proof that `vrecnu-cli` still builds with no Tauri in its graph.
 > `RecorderEngine` had **no implementation at all** until M5. The trait every shell
 > sits on was a contract nothing fulfilled — the engine offered only blocking free functions,
 > which suit `vrecnu-cli` and are unusable from a UI that must keep repainting.
-> `vrecnu-engine/src/session.rs` now implements it, publish path included. Committed on
-> `small-changes-idk` (`01108e2`), not yet merged to `main`.
+> `vrecnu-engine/src/session.rs` now implements it, publish path included. Committed as
+> `01108e2`, on `main` via PR #5.
 
 ### Capture → encode (the ✅ spine)
 
@@ -161,8 +162,8 @@ conversion, and now the `RecorderEngine` implementation.
 | **M2** | Capture → encode | ✅ measured |
 | **M3** | WASAPI audio | ✅ measured |
 | **M4** | Camera + bubble | ✅ measured |
-| **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised (the completion POSTs were fake), and the page has never been rendered in a browser against the server. On `small-changes-idk`, not yet merged to `main` |
-| **M6** | Shell + UI | ⬜ **no code yet.** Design drafted 2026-10-09 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`), awaiting approval. Engine side unblocked; building needs the MSVC toolchain back |
+| **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised (the completion POSTs were fake), and the page has never been rendered in a browser against the server. On `main` (PR #5) |
+| **M6** | Shell + UI | ⬜ **no code yet.** Design drafted 2026-10-09 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`), awaiting approval. Engine side and toolchain both unblocked (2026-10-14) |
 | **M7** | Editing | 🟨 `render_args()` builds and tests the command lines; nothing runs them |
 | **M8** | Packaging, installer, updater | ⬜ **blocked** on a code-signing certificate |
 | **M9** | Budget gates | ⬜ |
@@ -172,13 +173,9 @@ conversion, and now the `RecorderEngine` implementation.
 
 ## What is verified, and what only looks like it
 
-**Observed passing:** **240 Rust tests** on 2026-10-08 (against already-built test binaries;
-not re-run after the 2026-10-09 `doctor` edit), and `cargo check --workspace --all-targets` +
-`cargo fmt --check` on 2026-10-09. **Last observed clean on 2026-09-04, not re-run since:** `clippy -D warnings`,
-`cargo fmt --check`, and the shell-boundary dependency check across all 11 crates plus the
-`vrecnu-cli` link-time proof. Clippy could not be re-run on 2026-10-09: the dev machine's MSVC
-toolchain / Windows SDK was missing (`link.exe` not found) — an environment gap, not a code
-problem. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
+**Observed passing, 2026-10-14** (full recompile after the MSVC toolchain was reinstalled):
+**240 Rust tests**, `clippy --all-targets --all-features -D warnings`, `cargo fmt --check`, and
+the shell-boundary dependency check across all 11 crates plus the `vrecnu-cli` link-time proof. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
 shape `AGENTS.md` §1 budgets at ≤ 15 MB — and has **not been re-measured** since the publish
 page (237 KB of JS) started being embedded in it.
 

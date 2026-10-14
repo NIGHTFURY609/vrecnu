@@ -100,13 +100,10 @@ crates/
 
 ## Status
 
-**M0–M5 complete.** M0–M4 are on `main`; M5 is committed on branch `small-changes-idk` and
-not yet merged. `cargo test --workspace` passed **240 tests** across 11 crates on 2026-10-08
-(against already-built test binaries), and `cargo check --workspace --all-targets` passed on
-2026-10-09. `clippy -D warnings`,
-`fmt --check` and the shell-boundary gate (including its link-time proof) were last observed
-clean on 2026-09-04; clippy could not be re-run on 2026-10-09 because the dev machine's MSVC
-toolchain / Windows SDK was missing (see Prerequisites).
+**M0–M5 complete, all on `main`.** On 2026-10-14, `cargo test --workspace` passed **240 tests**
+across 11 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
+its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
+this section summarises it.
 
 Implemented: screen capture and the live encode path, WASAPI audio, the camera and floating
 bubble, and the loopback publish server, all driven end to end by `vrecnu-cli`
@@ -123,7 +120,7 @@ Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive ro
 | M2 | Windows Graphics Capture and the live encode path. | done, measured |
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
-| M5 | The loopback publish server. | done; branch `small-changes-idk`, pending merge |
+| M5 | The loopback publish server. | done; on `main` (PR #5) |
 | M6 | The Tauri shell and recorder UI. | not started |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
