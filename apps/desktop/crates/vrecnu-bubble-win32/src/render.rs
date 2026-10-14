@@ -258,7 +258,12 @@ pub fn render_bubble(layout: &BubbleLayout, frame: &SquareFrame) -> Vec<u8> {
 /// [`BubbleMask::composite_into`] does: `panic = "abort"` means a panic on the camera thread
 /// takes the recording with it.
 pub fn premultiply_into(straight: &[u8], out: &mut [u8]) {
-    for (src, dst) in straight.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+    for (src, dst) in straight
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(out.as_chunks_mut::<4>().0.iter_mut())
+    {
         let alpha = src[3];
         dst[0] = alpha_premultiply(src[0], alpha);
         dst[1] = alpha_premultiply(src[1], alpha);
@@ -358,7 +363,7 @@ mod tests {
         // data, which UpdateLayeredWindow renders with a dark halo.
         let layout = layout();
         let surface = render_bubble(&layout, &SquareFrame::solid(64, [255, 255, 255, 255]));
-        for chunk in surface.chunks_exact(4) {
+        for chunk in surface.as_chunks::<4>().0.iter() {
             let alpha = chunk[3];
             for channel in &chunk[..3] {
                 assert!(
@@ -384,8 +389,10 @@ mod tests {
         // transparent, and it is pure black, so premultiplying it changes nothing. Scanning
         // for partial alpha alone finds a shadow pixel first and proves nothing.
         let edge = straight
-            .chunks_exact(4)
-            .zip(premultiplied.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(premultiplied.as_chunks::<4>().0.iter())
             .find(|(s, _)| s[3] > 40 && s[3] < 215 && s[0] > 0)
             .expect("a partially covered lit edge pixel exists");
         assert!(
@@ -406,7 +413,12 @@ mod tests {
         let frame = SquareFrame::solid(64, [200, 30, 30, 255]);
         let straight = mask.composite(&frame, AlphaMode::Straight);
         let premultiplied = mask.composite(&frame, AlphaMode::Premultiplied);
-        for (s, p) in straight.chunks_exact(4).zip(premultiplied.chunks_exact(4)) {
+        for (s, p) in straight
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(premultiplied.as_chunks::<4>().0.iter())
+        {
             if s[3] == 255 {
                 assert_eq!(s, p);
             }

@@ -316,7 +316,7 @@ fn capture_loop(mut camera: Camera, consumers: &Consumers, stop: &AtomicBool) {
 
 /// Swaps the red and blue channels of a packed 4-byte-per-pixel buffer.
 fn rgba_to_bgra_in_place(buffer: &mut [u8]) {
-    for pixel in buffer.chunks_exact_mut(4) {
+    for pixel in buffer.as_chunks_mut::<4>().0.iter_mut() {
         pixel.swap(0, 2);
     }
 }

@@ -98,7 +98,7 @@ fn run() {
         }
         frames += 1;
 
-        if frames % 150 == 0 {
+        if matches!(frames % 150, 0) {
             println!(
                 "  {frames} frames, {:.1} fps average",
                 frames as f32 / started.elapsed().as_secs_f32()

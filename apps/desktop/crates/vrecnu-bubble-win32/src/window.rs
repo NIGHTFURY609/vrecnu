@@ -334,7 +334,7 @@ unsafe fn present_surface(window: SendHwnd, shared: &Arc<Shared>, surface: &[u8]
 
         // Negative height requests a top-down DIB, matching our buffer's row order. Omitting
         // it renders the bubble upside down, which is a classic GDI mistake.
-        let mut info = BITMAPINFO {
+        let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: u32::try_from(std::mem::size_of::<BITMAPINFOHEADER>()).unwrap_or(0),
                 biWidth: width,
@@ -357,7 +357,6 @@ unsafe fn present_surface(window: SendHwnd, shared: &Arc<Shared>, surface: &[u8]
                     return;
                 }
             };
-        info.bmiHeader.biSizeImage = 0;
 
         std::ptr::copy_nonoverlapping(
             surface.as_ptr(),

@@ -162,7 +162,9 @@ mod tests {
         let input = s16_bytes(&[100, -200, 300, -400]);
         let out = to_48k_stereo_s16(&input, stereo_s16_format(SAMPLE_RATE_HZ));
         let decoded: Vec<i16> = out
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         for (original, round_tripped) in [100i16, -200, 300, -400].iter().zip(decoded) {
@@ -183,7 +185,9 @@ mod tests {
         let input = s16_bytes(&[1000, 2000]); // two mono frames
         let out = to_48k_stereo_s16(&input, format);
         let decoded: Vec<i16> = out
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         // Frame 0: (1000, 1000); frame 1: (2000, 2000).
@@ -201,7 +205,9 @@ mod tests {
         let input = s16_bytes(&[500, -500, 9999, -9999]);
         let out = to_48k_stereo_s16(&input, format);
         let decoded: Vec<i16> = out
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         assert_eq!(decoded, vec![500, -500]);
@@ -247,7 +253,9 @@ mod tests {
             .collect();
         let out = to_48k_stereo_s16(&input, format);
         let decoded: Vec<i16> = out
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         assert_eq!(decoded, vec![i16::MAX, -i16::MAX]);

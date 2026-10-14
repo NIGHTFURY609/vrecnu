@@ -239,7 +239,9 @@ mod tests {
 
         let out = mixer.tick(one_second_ns());
         let first_frame: Vec<i16> = out[..4]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         assert_eq!(first_frame, vec![1500, -500]);
@@ -255,7 +257,9 @@ mod tests {
 
         let out = mixer.tick(one_second_ns());
         let first_frame: Vec<i16> = out[..4]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect();
         // 30_000 + 30_000 would wrap past i16::MAX; MIN + MIN would wrap past i16::MIN.
