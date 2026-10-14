@@ -7,12 +7,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
-#[allow(dead_code)] // wired in by the next commit
+mod events;
 mod services;
 mod tray;
 mod window;
 
-use tauri::RunEvent;
+use std::sync::Arc;
+
+use tauri::{Manager, RunEvent};
+use vrecnu_engine::Session;
+use vrecnu_shell_api::RecorderEngine;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -33,6 +37,16 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            let shell = Arc::new(services::TauriShell::new(app.handle().clone()));
+            let session = Arc::new(Session::new(shell));
+            // Subscribe before anything can emit; the UI recovers older state from
+            // get_snapshot, not from replayed events.
+            let engine_events = RecorderEngine::subscribe(session.as_ref());
+            events::spawn_pump(
+                engine_events,
+                events::WebviewSink::new(app.handle().clone()),
+            )?;
+            app.manage(session);
             tray::build(app.handle())?;
             Ok(())
         })
