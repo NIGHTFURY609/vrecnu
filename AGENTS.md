@@ -68,7 +68,7 @@ Work is phased on purpose. **Do not build a later phase's features into an earli
   audio, basic **trim only**, full Drive→link flow. Static-hosted, no backend.
 - **Phase 2 — Installed desktop app (Tauri v2 shell over a shell-agnostic pure-Rust core — see [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md), which supersedes ADR-001 on the shell question, + [ADR-005](docs/adr/005-installed-app-not-portable.md)).** Per-user installer, no admin rights, **auto-update**, code-signed. Capture, audio, camera, encode, publish server and orchestration are native Rust crates with
   **zero Tauri dependencies**; the Tauri shell (`vrecnu-shell-tauri`, milestone M6 — **in
-  progress**, S1 landed) is only the window/tray/UI around them, and reuses `packages/ui` for its
+  progress**, S1+S2 landed) is only the window/tray/UI around them, and reuses `packages/ui` for its
   recorder chrome. Real floating webcam bubble (raw Win32), native system audio,
   FFmpeg-powered editing (brightness/audio/trim). The one artifact shared with the web side
   by construction is the "connect & upload" page, which the desktop opens in a web view (or

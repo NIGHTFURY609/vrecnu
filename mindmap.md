@@ -32,9 +32,11 @@ vrecnu/
 │   │                    Rust loopback server (bytes checked over HTTP; never rendered
 │   │                    in a browser, never run against real Drive)
 │   ├── ui/         🟩   shadcn-style component seed (57)
+│   ├── desktop-ui/ 🟨   the Tauri shell's webview UI (M6): engine TS mirror, snapshot-seeded
+│   │                    reducer, diagnostic screen; the only package importing @tauri-apps/*
 │   └── web/        🟩   the PWA: record, OPFS streaming, trim, download (3,992)
 │
-└── apps/desktop/        Rust — Phase 2, 12 crates, ~11,900 LOC, 252 tests
+└── apps/desktop/        Rust — Phase 2, 12 crates, ~13,600 LOC, 252 tests
     ├── vrecnu-types         🟩  shared vocabulary, zero deps           (501)
     ├── vrecnu-shell-api     🟩  THE BOUNDARY: 4 traits, no GUI names   (469)
     ├── vrecnu-capture       ✅  Windows Graphics Capture + pacer/pool  (793)
@@ -48,8 +50,9 @@ vrecnu/
     └── vrecnu-cli           ✅  headless shell, the ADR-006 proof,
                                  and now a working `publish` command    (860)
 
-    vrecnu-shell-tauri   🟨  S1 tray shell (tray, on-demand window, single instance);
-                                 no recorder UI yet
+    vrecnu-shell-tauri   🟨  S1 tray shell (tray, on-demand window, single instance) + S2
+                                 (ShellServices, event pump, read-only IPC) (683);
+                                 no recorder UI yet; manual tray checks pending
     vrecnu-shell-egui    ⬜  reserved name, documented contract, intentionally absent
 ```
 
@@ -186,7 +189,7 @@ bound 47821, served the real Vite build (`index.html` 635 B, `index-*.js` 237 KB
 metadata and no on-disk path, reported `Content-Length: 5000` to a `HEAD /r/<token>`, took a
 progress POST and a completion POST, printed the share link, and released the port.
 
-**TypeScript, observed passing 2026-10-09:** `pnpm typecheck`, `pnpm lint` and `pnpm test`
+**TypeScript, observed passing 2026-10-15:** `pnpm typecheck`, `pnpm lint` and `pnpm test`
 (177 tests across 6 packages — a count that moves as tests are added or removed); the web and
 publish Vite builds succeed; the web bundle budget holds at about 82 KB gzip initial JS (of
 150 KB).

@@ -1,7 +1,7 @@
 # M6 — the Tauri shell (`vrecnu-shell-tauri`)
 
 **Status:** approved by the maintainer 2026-10-14 (D1 system browser, D2 packages/desktop-ui). S1+S2 planned in docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md.
-Nothing below is implemented yet. The MSVC toolchain + Windows SDK it needs were reinstalled on 2026-10-14.
+S1+S2 implemented; see HANDOFF.md. The MSVC toolchain + Windows SDK it needs were reinstalled on 2026-10-14.
 **Status of record:** [`HANDOFF.md`](../../../HANDOFF.md) — M6 progress is tracked there, not
 here; update it (and `mindmap.md`'s ledger) whenever a slice below starts, lands or changes
 (`AGENTS.md` §11).
