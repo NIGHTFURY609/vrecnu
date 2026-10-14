@@ -138,6 +138,15 @@ impl std::fmt::Debug for Session {
     }
 }
 
+/// Unix time in milliseconds; 1 if the clock reads before 1970.
+fn first_session_id() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(1, |elapsed| {
+            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
 impl Session {
     /// A new, idle session bound to `shell`.
     #[must_use]
@@ -158,7 +167,10 @@ impl Session {
             subscribers: Arc::new(Mutex::new(Vec::new())),
             publish: Mutex::new(None),
             publishing: Arc::new(AtomicBool::new(false)),
-            next_session: AtomicU64::new(1),
+            // Seeded from the wall clock, not 1: the id names the output file, and the data
+            // directory outlives the process. Milliseconds stay far below 2^53, so the id
+            // survives the trip through JSON into the desktop UI.
+            next_session: AtomicU64::new(first_session_id()),
         }
     }
 
@@ -920,6 +932,24 @@ mod tests {
 
     fn session() -> Arc<Session> {
         Arc::new(Session::new(Arc::new(StubShell { ffmpeg: None })))
+    }
+
+    #[test]
+    fn a_relaunch_does_not_reuse_the_previous_launchs_file_names() {
+        // Ids name the output file (`vrecnu-<id>.mp4`) in a data directory that outlives the
+        // process. Starting at 1 every launch overwrote the previous launch's first recording.
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let session = session();
+        let first = session.next_session.load(Ordering::Relaxed);
+        assert!(
+            first >= before,
+            "ids restart below the wall clock: {first} < {before}"
+        );
+        // Ids cross IPC as JSON numbers; JavaScript loses integers above 2^53.
+        assert!(first < 1 << 53);
     }
 
     #[test]
