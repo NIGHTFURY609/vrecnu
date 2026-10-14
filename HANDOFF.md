@@ -432,7 +432,7 @@ Observed, 2026-10-15:
 - **Shell boundary:** `check-shell-boundary.ps1` passes unchanged (script not edited; nothing
   joined `$shellFreeCrates`).
 - **One Tauri:** `cargo tree -p vrecnu-shell-tauri` contains exactly one `tauri v2.12.4`.
-- **Size:** release `vrecnu-shell-tauri.exe` is 3.34 MB against the 15 MB budget.
+- **Size (S1 only, measured at Task 3):** release `vrecnu-shell-tauri.exe` was 3.34 MB against the 15 MB budget. Superseded by the S2 figure of 3.90 MB below.
 - **WebView2 cycles, 5/5 (debug exe, automated):** opening the window started 6
   `msedgewebview2` processes under the shell; after `WM_CLOSE` + 10 s the count was 0 and the
   shell process stayed alive. The window is destroyed on close, not hidden.
@@ -467,6 +467,7 @@ Observed, 2026-10-15:
 
 - **Counts:** `cargo test --workspace` 252 (engine 48, shell-api 6, shell-tauri 10, cli 20, ...);
   TS 177 (desktop-ui 32).
+- **Size at S2 (release, stripped, observed 2026-10-15):** `vrecnu-shell-tauri.exe` is 3.90 MB against the 15 MB budget (S1 was 3.34 MB).
 - **Running app, debug exe, via WebView2 remote debugging (CDP), automated:** after a second
   launch opened the window, the page rendered `"session": "idle"`, all stats 0, `error: null`,
   `publishing: false`; devices: 28 sources (1 monitor `monitor:1` 1920x1080, 27 windows
