@@ -116,7 +116,7 @@ Rows marked **shipped** are implemented and measured today; see `HANDOFF.md` for
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Shell / GUI | **Tauri v2**, confined to `vrecnu-shell-tauri` — *planned (M6), not started* | [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md) — see §2a. The only crate allowed to name `tauri`/`tao`/`wry`/`webview2-com`, enforced in CI. A tray app that **destroys** its window on dismiss, to defend the RSS budget |
+| Shell / GUI | **Tauri v2**, confined to `vrecnu-shell-tauri` — *in progress (M6, S1 landed)* | [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md) — see §2a. The only crate allowed to name `tauri`/`tao`/`wry`/`webview2-com`, enforced in CI. A tray app that **destroys** its window on dismiss, to defend the RSS budget |
 | Second shell (the proof) | **`vrecnu-cli`**, headless — *shipped* | Built in CI on every commit. If it can drive record → encode → publish with no Tauri in its graph, the shell is genuinely swappable |
 | Windowing / event loop | **Tauri's own (`tao`)** | The bubble deliberately does *not* use it — a second `winit`/`tao` loop in one process is unsupported |
 | Screen capture | **`windows-capture` 2** — *shipped* | Windows Graphics Capture API. `scap` was the other candidate; unchanged by the shell decision either way |
@@ -202,7 +202,7 @@ The trade-off accepted: the port list becomes part of the app's public contract 
 
 ## 6. Suggested repository structure (monorepo: TS web + Rust desktop)
 
-The desktop app is a **Cargo workspace** (`apps/desktop`) living beside the TypeScript workspace: Tauri-free native core crates plus a replaceable shell ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)). The one artifact it is guaranteed to share with the web side is the **"connect & upload" publish page**, factored out so both the PWA and the desktop web view load it; the Tauri shell (M6, not started) will additionally reuse `packages/ui` for its own chrome.
+The desktop app is a **Cargo workspace** (`apps/desktop`) living beside the TypeScript workspace: Tauri-free native core crates plus a replaceable shell ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)). The one artifact it is guaranteed to share with the web side is the **"connect & upload" publish page**, factored out so both the PWA and the desktop web view load it; the Tauri shell (M6, in progress — S1 landed) will additionally reuse `packages/ui` for its own chrome.
 
 ```
 vrecnu/
@@ -220,7 +220,7 @@ vrecnu/
 │     └─ crates/       # vrecnu-types, -shell-api (the boundary), -capture, -audio,
 │                      #   -camera, -encode (ffmpeg sidecar), -namedpipe, -bubble-win32,
 │                      #   -publish-server (loopback), -engine (orchestration),
-│                      #   -cli (headless shell); vrecnu-shell-tauri planned (M6)
+│                      #   -cli (headless shell); vrecnu-shell-tauri (M6, in progress)
 ├─ LICENSE             # (already present)
 └─ README.md
 ```
@@ -259,7 +259,7 @@ A tight Phase 1 MVP you could aim at:
 5. **Minimal UI:** big record button, source picker, live preview, post-record trim, "Copy link."
 6. **Ship the PWA** to Cloudflare/GitHub Pages. That's a usable product.
 
-Then Phase 2, which is under way — `HANDOFF.md` tracks it milestone by milestone. The native core came first and is done: the Cargo workspace and its shell boundary, the always-on-top bubble window, screen capture → FFmpeg → seekable MP4, WASAPI audio, the camera, and the loopback publish server (§4a, M5). What remains is the Tauri shell and its UI (M6, not started), FFmpeg-backed editing, the signed installer, and the budget measurements ADR-006 owes.
+Then Phase 2, which is under way — `HANDOFF.md` tracks it milestone by milestone. The native core came first and is done: the Cargo workspace and its shell boundary, the always-on-top bubble window, screen capture → FFmpeg → seekable MP4, WASAPI audio, the camera, and the loopback publish server (§4a, M5). What remains is the Tauri shell and its UI (M6, in progress — S1, the tray app, has landed), FFmpeg-backed editing, the signed installer, and the budget measurements ADR-006 owes.
 
 **A good first milestone to commit to:** record a screen + webcam clip in the browser and get a working "anyone with the link" Drive URL on your clipboard. Everything else is refinement on top of that loop.
 

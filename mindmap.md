@@ -163,7 +163,7 @@ conversion, and now the `RecorderEngine` implementation.
 | **M3** | WASAPI audio | ✅ measured |
 | **M4** | Camera + bubble | ✅ measured |
 | **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised (the completion POSTs were fake), and the page has never been rendered in a browser against the server. On `main` (PR #5) |
-| **M6** | Shell + UI | 🟨 **in progress.** Design approved 2026-10-14 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`); S1+S2 planned, no shell code yet. Engine side and toolchain both unblocked (2026-10-14) |
+| **M6** | Shell + UI | 🟨 **in progress.** Design approved 2026-10-14 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`); **S1 done** (tray shell, on-demand window, single instance — 2026-10-15); S2 next. Engine side and toolchain both unblocked (2026-10-14) |
 | **M7** | Editing | 🟨 `render_args()` builds and tests the command lines; nothing runs them |
 | **M8** | Packaging, installer, updater | ⬜ **blocked** on a code-signing certificate |
 | **M9** | Budget gates | ⬜ |

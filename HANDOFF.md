@@ -1,7 +1,7 @@
 # vrecnu — handoff
 
 **Last updated:** 2026-10-15
-**Branch:** `main` — M0–M5 are all on `main` (M5 merged via PR #5, `0996580`).
+**Branch:** `feat/m6-tauri-shell` — M6 S1 is on this branch; M0–M5 are all on `main` (M5 merged via PR #5, `0996580`).
 
 > **This file is the project's status of record.** Every change that moves the project —
 > code, a milestone, a verification result, a decision, a blocker — updates it in the same
@@ -18,20 +18,28 @@ Observed passing, not assumed — each line carries the date it was observed:
 
 ```
 apps/desktop>  cargo clippy --all-targets --all-features -- -D warnings
-                                                        clean (2026-10-14, full recompile)
-apps/desktop>  cargo test --workspace                  pass, 240 tests (2026-10-14, freshly linked)
+                                                        clean (2026-10-15, rustc 1.99; also after
+                                                        deleting both dist/ dirs and rebuilding them)
+apps/desktop>  cargo test --workspace                  pass, 240 tests (2026-10-15; S1 adds none)
                  (audio 25, bubble 27, camera 20, capture 16, cli 20, encode 35,
                   engine 47, namedpipe 2, publish-server 34 unit + 2 loopback,
                   shell-api 5, types 7)
-apps/desktop>  cargo fmt --all -- --check              clean (2026-10-14)
-apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-14)
+apps/desktop>  cargo fmt --all -- --check              clean (2026-10-15)
+apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-15)
                  (pass -ManifestPath explicitly; $PSScriptRoot comes back
                   empty under some invocations and the default resolves to
                   `\..\Cargo.toml`)
-vrecnu>        pnpm typecheck / lint / test            pass, 145 tests (2026-10-09)
+vrecnu>        pnpm typecheck / lint / test            pass, 145 tests (2026-10-15)
                  (core 13, ui 2, storage 36, publish 23, web 71)
-vrecnu>        web and publish vite builds             succeed (2026-10-08)
+vrecnu>        web, publish and desktop-ui vite builds   succeed (2026-10-15)
 ```
+
+**Toolchain note, 2026-10-15:** the dev machine's stable rustc went 1.89 -> 1.99. Tauri 2.12
+needs rustc >= 1.90, so `vrecnu-shell-tauri` declares `rust-version = "1.90"` while the workspace
+floor stays 1.89 (engine, `vrecnu-cli`); building the whole workspace needs >= 1.90. Moving to
+1.99 also surfaced new-stable clippy hits (`chunks_exact_to_as_chunks` etc.) in `vrecnu-audio`,
+`vrecnu-bubble-win32` and `vrecnu-camera`, fixed in `d155962` — CI uses latest stable, so they
+would have failed on `main` too.
 
 The test counts move whenever tests are added or removed; update them when they do.
 
@@ -404,6 +412,39 @@ engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it
 
 ---
 
+## M6 — Tauri shell: S1 done, S2 next
+
+Plan: `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`. Spec:
+`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Branch `feat/m6-tauri-shell`.
+
+### S1 — tray app, on-demand window, exit prevention, single instance (done 2026-10-15)
+
+New crate `apps/desktop/crates/vrecnu-shell-tauri` (the only crate naming Tauri) and
+`packages/desktop-ui` (the only package importing `@tauri-apps/*`, lint-enforced). Pinned
+`tauri =2.12.4`, `tauri-build =2.7.3`, `tauri-plugin-single-instance =2.5.4` in the shell
+crate's own manifest. CI now builds `packages/publish` and `packages/desktop-ui` before the
+desktop job, because `tauri::generate_context!` fails without `desktop-ui/dist`.
+
+Observed, 2026-10-15:
+
+- **Shell boundary:** `check-shell-boundary.ps1` passes unchanged (script not edited; nothing
+  joined `$shellFreeCrates`).
+- **One Tauri:** `cargo tree -p vrecnu-shell-tauri` contains exactly one `tauri v2.12.4`.
+- **Size:** release `vrecnu-shell-tauri.exe` is 3.34 MB against the 15 MB budget.
+- **WebView2 cycles, 5/5 (debug exe, automated):** opening the window started 6
+  `msedgewebview2` processes under the shell; after `WM_CLOSE` + 10 s the count was 0 and the
+  shell process stayed alive. The window is destroyed on close, not hidden.
+- **Single instance:** a second launch exits by itself and the first instance opens/focuses
+  its window; a third launch with the window open left exactly one window (same hwnd).
+- **Still pending, by hand (maintainer):** tray icon visible with no window at startup;
+  left-click opens the window; right-click menu Open / Quit.
+
+Not covered by S1: any recorder UI, engine wiring, clipboard/opener, persistent data dir
+(S2, plan Tasks 5+). `Cargo.lock` grew by about 4.7k lines from Tauri's tree; worth a glance at
+review.
+
+---
+
 ## 2026-10-09 — sign-in fixes found by reading, before the first real Drive run
 
 Three defects in the shared OAuth path, each of which would have surfaced on the very first
@@ -437,7 +478,8 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6 in progress:** design approved 2026-10-14; S1+S2 plan at `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`.
+2. **M6: S1 done, S2 next.** Hand-check the tray (icon with no window, left-click, right-click
+   menu), then S2 (recorder UI + engine wiring) per `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
@@ -447,7 +489,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 | M | Scope | Notes |
 |---|---|---|
 | M5 | Loopback publish server | **Done**, on `main` (PR #5). See the M5 section above. |
-| M6 | Tauri shell + UI | **In progress** (S1). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M6 | Tauri shell + UI | **In progress** (S1 done 2026-10-15; S2 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |

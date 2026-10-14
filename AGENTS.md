@@ -67,8 +67,8 @@ Work is phased on purpose. **Do not build a later phase's features into an earli
 - **Phase 1 — Web app (PWA).** Chromium-on-Windows first. Screen + webcam + mic/system
   audio, basic **trim only**, full Drive→link flow. Static-hosted, no backend.
 - **Phase 2 — Installed desktop app (Tauri v2 shell over a shell-agnostic pure-Rust core — see [ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md), which supersedes ADR-001 on the shell question, + [ADR-005](docs/adr/005-installed-app-not-portable.md)).** Per-user installer, no admin rights, **auto-update**, code-signed. Capture, audio, camera, encode, publish server and orchestration are native Rust crates with
-  **zero Tauri dependencies**; the Tauri shell (`vrecnu-shell-tauri`, milestone M6 — **planned,
-  not started**) is only the window/tray/UI around them, and reuses `packages/ui` for its
+  **zero Tauri dependencies**; the Tauri shell (`vrecnu-shell-tauri`, milestone M6 — **in
+  progress**, S1 landed) is only the window/tray/UI around them, and reuses `packages/ui` for its
   recorder chrome. Real floating webcam bubble (raw Win32), native system audio,
   FFmpeg-powered editing (brightness/audio/trim). The one artifact shared with the web side
   by construction is the "connect & upload" page, which the desktop opens in a web view (or
@@ -93,7 +93,7 @@ is forbidden waste.
 | State | **React state/hooks; Zustand only if shared state is ever needed** | Zustand was removed because nothing imported it — the recorder keeps its state local to `useRecordingEngine`, so **no store is installed today**. Add Zustand (not Redux/MobX/etc.) when state genuinely needs sharing, not before (§3's "when in doubt, don't add it"). |
 | Package manager | **pnpm** (workspaces) | **NEVER** run `npm install` or `yarn` — it will corrupt the lockfile. Only `pnpm`. |
 | Monorepo | **Turborepo** | Respect package boundaries (see §4). |
-| Desktop shell / GUI | **Tauri v2**, over a shell-agnostic core ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)) | **Electron is forbidden.** Tauri is permitted again — ADR-006 supersedes ADR-001 on the shell question only. **Every Tauri dependency must live in `vrecnu-shell-tauri` (M6 — planned, the crate does not exist yet) and nowhere else**; the headless `vrecnu-cli` shell is built in CI as a link-time proof of that. `egui`/`Slint`/`iced` remain the documented fallback. |
+| Desktop shell / GUI | **Tauri v2**, over a shell-agnostic core ([ADR-006](docs/adr/006-phase-2-tauri-shell-with-swappable-core.md)) | **Electron is forbidden.** Tauri is permitted again — ADR-006 supersedes ADR-001 on the shell question only. **Every Tauri dependency must live in `vrecnu-shell-tauri` (M6 — in progress) and nowhere else**; the headless `vrecnu-cli` shell is built in CI as a link-time proof of that. `egui`/`Slint`/`iced` remain the documented fallback. |
 | Desktop bubble window | **Raw Win32 layered window** (`windows` crate + `tiny-skia`) | Not a second Tauri webview: that would force the camera open twice, which hard-fails on virtual/OEM devices *after* the user hits record. Survives a shell swap unchanged. |
 | Native capture | **`windows-capture`** (Windows Graphics Capture); audio via **`wasapi`**; camera via **`nokhwa`** | Phase 2+ only. These are what shipped (`vrecnu-capture`, `vrecnu-audio`, `vrecnu-camera`); `scap`/`cpal` were earlier candidates. |
 | Encode/edit (desktop) | **FFmpeg as a bundled sidecar — separate child process ONLY** | **Never link FFmpeg into our binary** (`ffmpeg-next`/`ffmpeg-sys`/any bindings are forbidden — we are MIT, FFmpeg is LGPL/GPL; see [ADR-004](docs/adr/004-ffmpeg-sidecar-and-size-budgets.md)). Prefer an LGPL build, stripped to the codecs/filters we use, ≤ 25 MB. **H.264 encode is `h264_mf`, not `libx264`** — `libx264` requires `--enable-gpl` and cannot exist in an LGPL build ([ADR-007](docs/adr/007-ffmpeg-h264-encoder-and-licensing.md)). Document version + `configure` line in NOTICE. Bundle at package time; do not commit the binary. |
@@ -151,7 +151,8 @@ packages/                       # TypeScript / pnpm workspace (web side)
   storage/   # StorageProvider interface + providers (GoogleDriveProvider first).
   ui/        # shared React components. Browser-safe only. Used by the PWA and the publish
              #   page, and by the Phase 2 desktop shell's chrome (ADR-006 restored this;
-             #   lands with M6 — the shell does not exist yet).
+             #   lands with M6).
+  desktop-ui/ # the desktop shell's UI; the ONLY package allowed to import `@tauri-apps/*`.
   publish/   # the "connect & upload" page (GIS token client + browser→Drive upload).
              #   loaded by BOTH the PWA and the Phase 2 desktop web view.
   web/       # Phase 1 PWA. Browser capture engine lives here.
@@ -170,7 +171,7 @@ apps/
       vrecnu-publish-server/  loopback HTTP server (`tiny_http`) for the publish page + recording.
       vrecnu-engine/          orchestration. Owns the threads, knows no shell.
       vrecnu-cli/             headless shell — the swappability proof. Keep it green.
-      vrecnu-shell-tauri/     PLANNED (M6), not started — the ONLY crate allowed to name Tauri.
+      vrecnu-shell-tauri/     the Tauri v2 tray shell (M6, in progress) — the ONLY crate allowed to name Tauri.
 ```
 
 **Boundary rules (strict):**
@@ -374,11 +375,16 @@ cargo test --workspace
 ./scripts/check-shell-boundary.ps1   # ADR-006 gate: dependency-graph scan + link-time proof that
                                      #   vrecnu-cli builds with no Tauri. Runs in CI; do not delete it.
 cargo build --workspace
-cargo run -p vrecnu-cli -- help      # the headless shell; there is no Tauri shell yet (M6)
+cargo run -p vrecnu-cli -- help      # the headless shell (the swappability proof)
+cargo run -p vrecnu-shell-tauri      # the Tauri tray shell (M6); build packages/desktop-ui first
 ```
 
 Desktop build traps (details in `apps/desktop/README.md`):
 
+- **Build `packages/desktop-ui` before any workspace cargo command.** `tauri::generate_context!`
+  fails to compile without `packages/desktop-ui/dist`; `pnpm build` covers it.
+- **Building the whole workspace needs rustc >= 1.90.** `vrecnu-shell-tauri` declares
+  `rust-version = "1.90"` (Tauri 2.12's floor); the engine and `vrecnu-cli` stay at 1.89.
 - **Build the publish page first.** `vrecnu-publish-server/build.rs` embeds
   `packages/publish/dist` into the binary at compile time, so run `pnpm build` (or just
   `pnpm --filter @vrecnu/publish build`) **before** `cargo build`/`cargo run` for anything that
@@ -430,6 +436,7 @@ Desktop build traps (details in `apps/desktop/README.md`):
   shell is still swappable (ADR-006). Formerly this line banned Tauri outright (ADR-001).
   Outside `vrecnu-shell-tauri`, a web view (or the system browser) exists **only** for the
   publish step (§5).
+- ❌ Importing `@tauri-apps/*` outside `packages/desktop-ui` (lint-enforced).
 - ❌ Implementing Google Drive / OAuth / upload inside any Rust desktop crate — it lives in
   `packages/publish` and runs in the web view.
 - ❌ Serving the publish page from a `wry` custom URI scheme — Google rejects it as an OAuth

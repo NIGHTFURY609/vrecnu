@@ -84,7 +84,7 @@ during development, that's fine — but shipped code still follows `AGENTS.md` �
   (ADR-006; it supersedes ADR-001 on the shell question only). *Tauri is an output device and
   an input device, not the application:* capture, audio, camera, encode, the publish server
   and orchestration live in crates with **zero Tauri dependencies**, and only
-  `vrecnu-shell-tauri` (milestone M6 — planned, not created yet) may name `tauri`/`tao`/`wry`/
+  `vrecnu-shell-tauri` (milestone M6 — in progress) may name `tauri`/`tao`/`wry`/
   `webview2-com`. Keep the headless `vrecnu-cli` shell building (it is the link-time proof,
   gated by `apps/desktop/scripts/check-shell-boundary.ps1` in CI) and never add a
   `window.__TAURI__` branch to `packages/publish` — the share link returns over

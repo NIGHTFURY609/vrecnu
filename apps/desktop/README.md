@@ -6,7 +6,8 @@ hatch back to a pure-Rust GUI.
 
 ## Prerequisites
 
-Rust stable (1.89 or newer) **and the Windows SDK**.
+Rust stable (1.89 or newer for the engine and `vrecnu-cli`; **1.90 or newer to build the whole
+workspace**, which is `vrecnu-shell-tauri`'s declared floor) **and the Windows SDK**.
 
 > **The Windows SDK is not optional and its absence is confusing.** Without it, `cargo build`
 > — and even `cargo check`, as soon as a build script or proc-macro needs recompiling — fails
@@ -65,6 +66,16 @@ Once the installer settles, full parallelism works again.
 
 ## Commands
 
+**Build the frontends first** (from the repo root). The desktop crates embed two Vite builds at
+compile time: `packages/publish/dist` (the publish page) and `packages/desktop-ui/dist` (the
+shell's UI). `tauri::generate_context!` fails to compile without the latter, so this is required
+before any workspace cargo command:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm --filter "@vrecnu/publish" --filter "@vrecnu/desktop-ui" build   # or just: pnpm build
+```
+
 ```powershell
 cargo build --workspace
 cargo test --workspace
@@ -95,12 +106,12 @@ crates/
   vrecnu-bubble-win32/     the floating camera bubble, raw Win32.
   vrecnu-engine/           orchestration. Owns the threads, knows no shell.
   vrecnu-cli/              headless shell. The swappability proof.
-  vrecnu-shell-tauri/      (M6) the ONLY crate allowed to name Tauri.
+  vrecnu-shell-tauri/      (M6, S1 landed) the ONLY crate allowed to name Tauri.
 ```
 
 ## Status
 
-**M0–M5 complete, all on `main`.** On 2026-10-14, `cargo test --workspace` passed **240 tests**
+**M0–M5 complete, all on `main`; M6 S1 (tray shell) done on `feat/m6-tauri-shell`.** On 2026-10-14, `cargo test --workspace` passed **240 tests**
 across 11 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
 its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
 this section summarises it.
@@ -112,7 +123,8 @@ end to end, publish included. Measured against real hardware for M2–M4; M5 aga
 process, with fake completion POSTs.
 
 Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive round trip
-(no OAuth client is registered), and any UI. There is no Tauri shell yet.
+(no OAuth client is registered), and the recorder UI (M6 S2). The Tauri shell exists as a tray
+app that opens its window on demand and destroys it on close (S1).
 
 | Milestone | Brings | State |
 |---|---|---|
@@ -121,7 +133,7 @@ Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive ro
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
 | M5 | The loopback publish server. | done; on `main` (PR #5) |
-| M6 | The Tauri shell and recorder UI. | in progress |
+| M6 | The Tauri shell and recorder UI. | in progress — S1 (tray shell) done, S2 next |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
 | M9 | Budget gates. | not started |
