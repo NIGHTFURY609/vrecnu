@@ -34,7 +34,7 @@ vrecnu/
 │   ├── ui/         🟩   shadcn-style component seed (57)
 │   └── web/        🟩   the PWA: record, OPFS streaming, trim, download (3,992)
 │
-└── apps/desktop/        Rust — Phase 2, 12 crates, ~11,900 LOC, 240 tests
+└── apps/desktop/        Rust — Phase 2, 12 crates, ~11,900 LOC, 252 tests
     ├── vrecnu-types         🟩  shared vocabulary, zero deps           (501)
     ├── vrecnu-shell-api     🟩  THE BOUNDARY: 4 traits, no GUI names   (469)
     ├── vrecnu-capture       ✅  Windows Graphics Capture + pacer/pool  (793)
@@ -175,7 +175,7 @@ conversion, and now the `RecorderEngine` implementation.
 ## What is verified, and what only looks like it
 
 **Observed passing, 2026-10-15** (clippy, tests, fmt and the boundary script re-run after the Tauri shell landed):
-**240 Rust tests**, `clippy --all-targets --all-features -D warnings`, `cargo fmt --check`, and
+**252 Rust tests**, `clippy --all-targets --all-features -D warnings`, `cargo fmt --check`, and
 the shell-boundary dependency check across the 11 shell-free crates plus the `vrecnu-cli` link-time proof. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
 shape `AGENTS.md` §1 budgets at ≤ 15 MB — and has **not been re-measured** since the publish
 page (237 KB of JS) started being embedded in it.
@@ -187,7 +187,7 @@ metadata and no on-disk path, reported `Content-Length: 5000` to a `HEAD /r/<tok
 progress POST and a completion POST, printed the share link, and released the port.
 
 **TypeScript, observed passing 2026-10-09:** `pnpm typecheck`, `pnpm lint` and `pnpm test`
-(145 tests across 5 packages — a count that moves as tests are added or removed); the web and
+(177 tests across 6 packages — a count that moves as tests are added or removed); the web and
 publish Vite builds succeed; the web bundle budget holds at about 82 KB gzip initial JS (of
 150 KB).
 
