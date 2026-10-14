@@ -1,6 +1,6 @@
 # vrecnu — codebase mindmap
 
-**A map of what exists right now**, as of 2026-10-14 (M0–M5 are all on `main`; M5 merged via
+**A map of what exists right now**, as of 2026-10-15 (M0–M5 are all on `main`, M6 S1 on `feat/m6-tauri-shell`; M5 merged via
 PR #5). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log and the
 **status of record**: this map summarises it and is updated in the same change (`AGENTS.md` §11). This
 document answers one question: *what is actually in this repository, and how much of it works?*
@@ -34,7 +34,7 @@ vrecnu/
 │   ├── ui/         🟩   shadcn-style component seed (57)
 │   └── web/        🟩   the PWA: record, OPFS streaming, trim, download (3,992)
 │
-└── apps/desktop/        Rust — Phase 2, 11 crates, ~11,900 LOC, 240 tests
+└── apps/desktop/        Rust — Phase 2, 12 crates, ~11,900 LOC, 240 tests
     ├── vrecnu-types         🟩  shared vocabulary, zero deps           (501)
     ├── vrecnu-shell-api     🟩  THE BOUNDARY: 4 traits, no GUI names   (469)
     ├── vrecnu-capture       ✅  Windows Graphics Capture + pacer/pool  (793)
@@ -48,7 +48,8 @@ vrecnu/
     └── vrecnu-cli           ✅  headless shell, the ADR-006 proof,
                                  and now a working `publish` command    (860)
 
-    vrecnu-shell-tauri   ⬜  THE UI. Does not exist.
+    vrecnu-shell-tauri   🟨  S1 tray shell (tray, on-demand window, single instance);
+                                 no recorder UI yet
     vrecnu-shell-egui    ⬜  reserved name, documented contract, intentionally absent
 ```
 
@@ -173,9 +174,9 @@ conversion, and now the `RecorderEngine` implementation.
 
 ## What is verified, and what only looks like it
 
-**Observed passing, 2026-10-14** (full recompile after the MSVC toolchain was reinstalled):
+**Observed passing, 2026-10-15** (clippy, tests, fmt and the boundary script re-run after the Tauri shell landed):
 **240 Rust tests**, `clippy --all-targets --all-features -D warnings`, `cargo fmt --check`, and
-the shell-boundary dependency check across all 11 crates plus the `vrecnu-cli` link-time proof. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
+the shell-boundary dependency check across the 11 shell-free crates plus the `vrecnu-cli` link-time proof. Release `vrecnu-cli.exe` was **0.93 MB** before M5 — the exact
 shape `AGENTS.md` §1 budgets at ≤ 15 MB — and has **not been re-measured** since the publish
 page (237 KB of JS) started being embedded in it.
 
@@ -213,7 +214,7 @@ publish Vite builds succeed; the web bundle budget holds at about 82 KB gzip ini
    built and proven end to end on this side of the browser; the browser half **needs your
    Google account** — nothing here can do it. `vrecnu-cli publish <file>` is the way to try it
    the moment an OAuth client exists.
-2. **There is no UI.** `vrecnu-cli` is the only front end. M6 is now fully unblocked.
+2. **There is no recorder UI yet.** A tray shell exists (M6 S1), but `vrecnu-cli` is still the only way to record or publish. M6 is now fully unblocked.
 3. **M8 is blocked on a code-signing certificate**, and no amount of code moves it.
 4. **Clipboard delivery is untested on a real shell.** `CliShell` cannot copy — it says so, and
    the engine correctly logs a warning rather than downgrading a successful upload to a failed

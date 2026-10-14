@@ -111,8 +111,8 @@ crates/
 
 ## Status
 
-**M0–M5 complete, all on `main`; M6 S1 (tray shell) done on `feat/m6-tauri-shell`.** On 2026-10-14, `cargo test --workspace` passed **240 tests**
-across 11 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
+**M0–M5 complete, all on `main`; M6 S1 (tray shell) done on `feat/m6-tauri-shell`.** On 2026-10-15, `cargo test --workspace` passed **240 tests**
+across 12 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
 its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
 this section summarises it.
 
