@@ -9,9 +9,10 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings=0",
-    "test": "vitest run --pool=threads --passWithNoTests"
+    "test": "vitest run --pool=threads"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.12.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
