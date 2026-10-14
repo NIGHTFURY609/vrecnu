@@ -3,7 +3,9 @@ name = "vrecnu-shell-tauri"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
+# The workspace floor stays 1.89 so the engine and vrecnu-cli (the ADR-006 escape hatch) still build
+# on older toolchains; only the Tauri shell needs the newer compiler.
+rust-version = "1.90"
 description = "The Tauri v2 tray shell. The ONLY crate allowed to name tauri/tao/wry/webview2-com (ADR-006)."
 
 [[bin]]
@@ -13,7 +15,7 @@ path = "src/main.rs"
 [features]
 default = ["custom-protocol"]
 # Serve the embedded packages/desktop-ui/dist rather than a dev-server URL. On by default so a
-# plain `cargo run` is the real app: vrecnu builds with Cargo, not the Tauri CLI (AGENTS.md Â§8).
+# plain `cargo run` is the real app: vrecnu builds with Cargo, not the Tauri CLI (AGENTS.md §8).
 custom-protocol = ["tauri/custom-protocol"]
 
 # Tauri is declared here and nowhere else. The workspace table deliberately does not list it
