@@ -1,6 +1,6 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-15
 **Branch:** `main` — M0–M5 are all on `main` (M5 merged via PR #5, `0996580`).
 
 > **This file is the project's status of record.** Every change that moves the project —
@@ -437,10 +437,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: the Tauri shell.** Design drafted, awaiting approval:
-   [`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`](docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md).
-   Fully unblocked — `RecorderEngine` is implemented end to end and the toolchain is back
-   (2026-10-14). Waiting only on the maintainer's approval of the design.
+2. **M6 in progress:** design approved 2026-10-14; S1+S2 plan at `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
@@ -450,7 +447,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 | M | Scope | Notes |
 |---|---|---|
 | M5 | Loopback publish server | **Done**, on `main` (PR #5). See the M5 section above. |
-| M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M6 | Tauri shell + UI | **In progress** (S1). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |

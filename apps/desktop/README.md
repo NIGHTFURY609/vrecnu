@@ -121,7 +121,7 @@ Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive ro
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
 | M5 | The loopback publish server. | done; on `main` (PR #5) |
-| M6 | The Tauri shell and recorder UI. | not started |
+| M6 | The Tauri shell and recorder UI. | in progress |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
 | M9 | Budget gates. | not started |
