@@ -155,9 +155,9 @@ permanent rather than provisional.
 
 ## Action Items
 
-1. [ ] Scaffold `apps/desktop` with the crate boundary and the `vrecnu-cli` shell (M0).
-2. [ ] Add the CI dep-graph gate and keep `vrecnu-cli` green forever (M0).
-3. [ ] Write `read_this_idiot.md` at the repo root.
-4. [ ] Reword `AGENTS.md` §3 (Tauri forbidden), §4 (`src-tauri/`, `ui/` web-only) and §10.
+1. [x] Scaffold `apps/desktop` with the crate boundary and the `vrecnu-cli` shell (M0).
+2. [x] Add the CI dep-graph gate and keep `vrecnu-cli` green forever (M0).
+3. [x] Write `read_this_idiot.md` at the repo root.
+4. [x] Reword `AGENTS.md` §3 (Tauri forbidden), §4 (`src-tauri/`, `ui/` web-only) and §10.
 5. [ ] Measure idle-in-tray and recording RSS in M9; amend AGENTS.md §1 with numbers.
 6. [ ] Record the bubble spike results (ADR-001 action item 3) here when M1 completes.

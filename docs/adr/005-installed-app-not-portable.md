@@ -1,9 +1,16 @@
 # ADR-005: Phase 2 ships as an installed app, not a portable exe
 
-**Status:** Accepted
+**Status:** Accepted — its "Tauri remains rejected" conclusion was reversed by [ADR-006](006-phase-2-tauri-shell-with-swappable-core.md)
 **Date:** 2026-08-03
 **Deciders:** Maintainer (Jeswin Christie)
 **Amends:** [ADR-001](001-phase-2-pure-rust-desktop.md) (rationale, not decision)
+
+> **Amendment (2026-10-09) — read [ADR-006](006-phase-2-tauri-shell-with-swappable-core.md)
+> for the shell.** Where this ADR says ADR-001's decision stands and "Tauri remains rejected"
+> on runtime-footprint grounds, ADR-006 (2026-08-06) later reversed that: Phase 2 is a Tauri v2
+> shell over a shell-agnostic core, and the footprint concern became an M9 measurement rather
+> than a ban. This ADR's own decision — an installed, per-user, signed, auto-updating app
+> instead of a portable exe — is unaffected.
 
 ## Context
 

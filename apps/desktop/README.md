@@ -9,7 +9,8 @@ hatch back to a pure-Rust GUI.
 Rust stable (1.89 or newer) **and the Windows SDK**.
 
 > **The Windows SDK is not optional and its absence is confusing.** Without it, `cargo build`
-> — and even `cargo check` — fails with:
+> — and even `cargo check`, as soon as a build script or proc-macro needs recompiling — fails
+> with:
 >
 > ```
 > LINK : fatal error LNK1181: cannot open input file 'kernel32.lib'
@@ -89,6 +90,7 @@ crates/
   vrecnu-audio/            WASAPI loopback + mic, and the silence filler.
   vrecnu-camera/           sole owner of the camera device.
   vrecnu-encode/           the FFmpeg sidecar (child process, never linked).
+  vrecnu-namedpipe/        Win32 named pipes feeding audio and camera frames to FFmpeg.
   vrecnu-publish-server/   the loopback server (ADR-002).
   vrecnu-bubble-win32/     the floating camera bubble, raw Win32.
   vrecnu-engine/           orchestration. Owns the threads, knows no shell.
@@ -98,22 +100,31 @@ crates/
 
 ## Status
 
-**M0 complete.** 114 tests pass, `clippy -D warnings` is clean, `fmt --check` is clean, and
-the shell-boundary gate passes including its link-time proof.
+**M0–M5 complete.** M0–M4 are on `main`; M5 is committed on branch `small-changes-idk` and
+not yet merged. `cargo test --workspace` passed **240 tests** across 11 crates on 2026-10-08
+(against already-built test binaries), and `cargo check --workspace --all-targets` passed on
+2026-10-09. `clippy -D warnings`,
+`fmt --check` and the shell-boundary gate (including its link-time proof) were last observed
+clean on 2026-09-04; clippy could not be re-run on 2026-10-09 because the dev machine's MSVC
+toolchain / Windows SDK was missing (see Prerequisites).
 
-Implemented: the workspace, the boundary traits, the domain types, and the pure
-logic each subsystem is built around — the frame pacer, the buffer pool, the audio silence
-filler, FFmpeg argv construction and `-progress` parsing, HTTP Range parsing, the capability
-token, the session state machine, and the error model.
+Implemented: screen capture and the live encode path, WASAPI audio, the camera and floating
+bubble, and the loopback publish server, all driven end to end by `vrecnu-cli`
+(`doctor`, `sources`, `cameras`, `record`, `publish`). The engine implements `RecorderEngine`
+end to end, publish included. Measured against real hardware for M2–M4; M5 against a real
+process, with fake completion POSTs.
 
-Not yet implemented: the platform backends themselves. `vrecnu-cli` reports which milestone
-owns each missing piece rather than pretending to succeed:
+Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive round trip
+(no OAuth client is registered), and any UI. There is no Tauri shell yet.
 
-| Milestone | Brings |
-|---|---|
-| M1 | The bubble spike. **Gates everything after it.** |
-| M2 | Windows Graphics Capture and the live encode path. |
-| M3 | WASAPI loopback and microphone capture. |
-| M4 | Camera device and the bubble, integrated. |
-| M5 | The loopback publish server. |
-| M6 | The Tauri shell and recorder UI. |
+| Milestone | Brings | State |
+|---|---|---|
+| M1 | The bubble spike. | code complete; hardware measurements pending |
+| M2 | Windows Graphics Capture and the live encode path. | done, measured |
+| M3 | WASAPI loopback and microphone capture. | done, measured |
+| M4 | Camera device and the bubble, integrated. | done, measured |
+| M5 | The loopback publish server. | done; branch `small-changes-idk`, pending merge |
+| M6 | The Tauri shell and recorder UI. | not started |
+| M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
+| M8 | Installer and auto-update. | blocked on a code-signing certificate |
+| M9 | Budget gates. | not started |

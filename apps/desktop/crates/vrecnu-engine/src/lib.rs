@@ -20,9 +20,11 @@ mod camera_pipeline;
 mod error;
 mod machine;
 mod pipeline;
+mod session;
 
 pub use audio_pipeline::{probe as probe_audio, AudioProbe};
 pub use camera_pipeline::{list_cameras, probe as probe_camera, CameraSelection};
 pub use error::EngineError;
 pub use machine::{SessionMachine, TransitionError};
 pub use pipeline::{list_capture_sources, probe_encoder, record, RecordOutcome, RecordRequest};
+pub use session::{spawn as spawn_session, Session};

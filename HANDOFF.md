@@ -1,16 +1,36 @@
 # vrecnu — handoff
 
-**Last updated:** 2026-09-03
-**Branch:** `main` (M0–M3 landed; M4 is this session's work, **uncommitted**)
+**Last updated:** 2026-10-09
+**Branch:** `small-changes-idk` — M0–M4 are on `main` (M4 landed in `b91585f`); M5 (publish
+server + engine `Session`, `01108e2`) is committed on `small-changes-idk` and **not yet merged
+to `main`**
 
 ---
 
 ## Verified state, right now
 
-Observed passing this session, not assumed:
+Observed passing, not assumed (dates matter — see the environment note):
 
 ```
-apps/desktop>  cargo test --workspace -j 4     exit 0, 212 tests passed
+apps/desktop>  cargo test --workspace                  pass, 240 tests (2026-10-08)
+                 (audio 25, bubble 27, camera 20, capture 16, cli 20, encode 35,
+                  engine 47, namedpipe 2, publish-server 34 unit + 2 loopback,
+                  shell-api 5, types 7)
+                 Ran against test binaries already built; nothing recompiled. Not
+                 re-run after the 2026-10-09 `vrecnu-cli doctor` edit — no linker.
+apps/desktop>  cargo fmt --all -- --check              pass (2026-10-09)
+apps/desktop>  cargo check --workspace --all-targets   pass (2026-10-09, after that edit;
+                 works only because build-script artifacts are cached)
+vrecnu>        pnpm typecheck / lint / test            pass, 145 tests (2026-10-09)
+                 (core 13, ui 2, storage 36, publish 23, web 71)
+vrecnu>        web and publish vite builds             succeed (2026-10-08)
+```
+
+The TypeScript count is "135 as of 2026-10-09"; it moves whenever tests are added or removed.
+
+Last observed clean on 2026-09-04, **not re-run on 2026-10-09** (see the environment note below):
+
+```
 apps/desktop>  cargo clippy -- -D warnings      clean
 apps/desktop>  cargo fmt --all -- --check       clean
 apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
@@ -19,15 +39,15 @@ apps/desktop>  scripts/check-shell-boundary.ps1 pass, incl. link-time proof
                   `\..\Cargo.toml`)
 ```
 
-Carried forward from 2026-08-07, not re-run this session:
+**Environment note, 2026-10-09:** the dev machine's MSVC toolchain / Windows SDK was missing
+(`link.exe` not found), so `cargo clippy` could not be re-run. This is an environment gap, not a
+code problem; the last clean clippy/fmt result is the 2026-09-04 one above. To restore it,
+install Visual Studio 2022 Build Tools with the **Desktop development with C++** workload and
+the Windows SDK (see `apps/desktop/README.md` and gotcha 1 below).
 
-```
-vrecnu>        pnpm test                        5/5 packages, 135 tests passed
-vrecnu>        pnpm lint / typecheck / build    all green
-```
-
-Bundle budgets (AGENTS.md §1): **82.4 KB gzip initial JS (55% of 150 KB)**, **86 KB total first
-load (22% of 400 KB)**.
+Bundle budgets (AGENTS.md §1): web initial JS re-checked 2026-10-09 at about 82 KB gzip, within
+the 150 KB budget. The detailed figures from the earlier measurement were **82.4 KB gzip initial
+JS (55% of 150 KB)** and **86 KB total first load (22% of 400 KB)**.
 
 ---
 
@@ -43,9 +63,11 @@ load (22% of 400 KB)**.
 
 ## Done
 
-### Phase 1 (the PWA) — complete
+### Phase 1 (the PWA) — code complete, never run against real Drive, not deployed
 
-Was committed as "basic functionality"; the audit found it materially unfinished.
+Was committed as "basic functionality"; the audit found it materially unfinished. The
+Drive-facing parts are exercised against fakes only: no OAuth client exists, so upload, share
+and `webViewLink` have never touched Google, and the PWA is not deployed anywhere.
 
 | Area | What changed |
 |---|---|
@@ -71,7 +93,7 @@ Was committed as "basic functionality"; the audit found it materially unfinished
 
 ### M0 — Rust workspace, complete and verified
 
-10 crates, 128 tests. The boundary is enforced by `scripts/check-shell-boundary.ps1`, which
+10 crates and 128 tests at the time (11 crates now — `vrecnu-namedpipe` arrived with M3). The boundary is enforced by `scripts/check-shell-boundary.ps1`, which
 was proven to actually detect leaks (it fires on `serde`/`thiserror`, which are present).
 
 ### M1 — bubble window, code complete
@@ -316,21 +338,124 @@ The M2/M3 pattern held: every one of these passed the unit tests.
     `cargo tree -i mozjpeg-sys` → "did not match any packages". The `Cargo.lock` entries for it
     are inert: reachable only via `--features mjpeg`.
 
+## M5 (loopback publish server) — complete and exercised against a real process
+
+Committed as `01108e2` on branch `small-changes-idk`; **not yet merged to `main`**.
+
+The last piece of the record→link pipe that lives on our side of the browser. `tiny_http` on a
+hand-built socket, the Vite build of `packages/publish` embedded at compile time, and the
+engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it.
+
+### What was built
+
+- **`vrecnu-publish-server`** gained `build.rs` (embeds `packages/publish/dist`), `assets.rs`
+  (the lookup table — deliberately not a document root) and `server.rs` (the loop, routing, the
+  two security checks, Range, the three `POST /api/*` endpoints).
+- **`CapabilityToken::random`** — 32 bytes from `getrandom`, hex. Hex rather than base64url
+  because the token travels in a URL *and* a JSON body, and hex needs no escaping in either.
+- **`vrecnu-engine`** — a `PublishPump` thread that **owns** the `PublishServer`, turns
+  `PublishSignal` into `EngineEvent`, puts the share link on the clipboard, and releases the
+  port when it exits. Plus `Session::adopt_recording`, so a publish need not follow a record in
+  the same process.
+- **`vrecnu-cli publish <FILE>`** — a real command now, and `CliShell::open_external_url`
+  actually launches the browser. This is what makes the Drive round trip testable by a human
+  the moment an OAuth client exists.
+
+### Three things that were wrong until it was actually run
+
+1. **`shutdown()` did not release the port.** The `Arc<tiny_http::Server>` outlived it, so the
+   listener stayed bound until the whole struct dropped. Stopping the accept loop is not the
+   same as closing the socket.
+2. **Even after fixing that, release was asynchronous.** tiny_http's accept thread unwinds on
+   its own schedule, so `shutdown()` returned while the port was still bound. Invisible on an
+   idle machine; reproducible under `cargo test --workspace`, where the whole box is busy.
+   `shutdown` now re-binds the port to confirm the OS agrees, with a 1.5 s grace. The failure
+   this prevents is the *next* publish reporting `AllPortsBusy` with nothing listening.
+3. **The hand-rolled test client read a body from a `HEAD` response.** Not a server bug, but it
+   is exactly the mistake the publish page could make: a `HEAD` carries the `Content-Length` of
+   the body it *would* have sent — which is the whole reason `probeRangeSourceSize` uses it —
+   and no body.
+
+### Observed, 2026-09-04
+
+- **240 tests** workspace-wide (was 224), `clippy -D warnings` exit 0, `cargo fmt --check`
+  clean, shell-boundary check green across all 11 crates plus the `vrecnu-cli` link proof.
+- `tests/loopback.rs` drives a real `PublishServer` over a real socket: index and hashed asset,
+  `/api/session`, whole-file `GET`, `Range: bytes=100-199` → 206 with the exact bytes,
+  `bytes=99999-` → 416 with `Content-Range: bytes */4096`, wrong token → 403 everywhere, a
+  rebound `Host` → 421, a foreign `Origin` → 403, progress and completion POSTs, 410 after the
+  session ends, and the port free after shutdown.
+- **A real `vrecnu-cli publish` process**, driven from PowerShell: bound 47821, served the
+  actual Vite build (`index.html` 635 B, `index-DUP3FnI7.js` 237 KB, correct `Content-Type`s,
+  **no `Access-Control-Allow-Origin` on any response**), `/api/session` returned the metadata
+  with no on-disk path in it, `HEAD /r/<token>` reported `Content-Length: 5000` and
+  `Accept-Ranges: bytes`, a progress POST printed `uploaded 50%`, a completion POST printed the
+  share link, and the process exited with 47821 free.
+
+### Known, measured, not yet addressed
+
+- **The completion in that run carried a fake file id.** Nothing has touched Google. This is
+  still blocked on registering an OAuth client — see the open item below.
+- **The page has never been rendered in a browser against this server.** The bytes are right;
+  React mounting and fetching was not observed.
+- **`vrecnu-cli.exe` has not been re-measured** since it started embedding 237 KB of JS. The
+  ≤ 15 MB budget is in no danger, but the 0.93 MB figure is now stale.
+- **`CliShell` cannot copy to the clipboard** and says so. The engine logs the warning and
+  still reports the link, which is correct — a clipboard failure must not downgrade a
+  successful upload. Real clipboard delivery is an M6 question.
+- **Multi-range requests are declined**, not half-implemented: the server sends the whole file,
+  which RFC 9110 allows.
+
+---
+
+## 2026-10-09 — sign-in fixes found by reading, before the first real Drive run
+
+Three defects in the shared OAuth path, each of which would have surfaced on the very first
+real upload. Fixed with unit tests; none of it has run against Google yet.
+
+- **A closed or blocked sign-in popup hung the upload forever.** `initTokenClient` had no
+  `error_callback`, and GIS never calls `callback` for popup failures, so the promise stayed
+  pending. Now rejected with an actionable message ("Try again" resumes the upload).
+- **One sign-in popup per 8 MiB chunk.** The provider asks for a token before every request
+  and the getter re-requested from GIS every time — ~128 popups for a 1 GB file, all outside
+  a user gesture. The getter now caches the token until 5 minutes before `expires_in`, shares
+  one in-flight request between callers, refreshes with `prompt: ""`, and rejects a grant that
+  is missing the `drive.file` scope (granular consent can drop it).
+- **No 401 handling anywhere.** With a cache, a revoked token would have failed the upload
+  outright. `GoogleDriveProvider` now re-authorises once with `forceRefresh` on a 401 (single
+  requests and chunk PUTs alike) and fails cleanly on a second.
+- **`pkce.ts` deleted.** It was exported and tested but never used: the product uses the GIS
+  token model, not PKCE (Google wants a client secret for PKCE with a web client). Docs
+  aligned in AGENTS.md §5, ADR-002's amendment, and `docs/oauth-setup.md`.
+- `vrecnu-cli doctor` no longer claims the publish server is "not yet implemented (M5)"; it
+  reports whether the publish page was embedded in the build.
+
+TS after the fixes: typecheck and lint pass; 145 tests pass (storage 36, publish 23).
+Rust: `cargo fmt --check` and `cargo check --workspace --all-targets` pass; `cargo test`
+and clippy could not be re-run (no MSVC linker on the dev machine).
+
+---
+
 ### Next actions, in order
 
-1. **Window capture with a camera has not been exercised** — it is the one path that still burns
+1. **Register the OAuth client and run the round trip.** Everything on our side is now built
+   and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
+   highest-value action left in the project and no amount of code substitutes for it.
+2. **M6: the Tauri shell.** Design drafted, awaiting approval:
+   [`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`](docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md).
+   Code-wise unblocked — `RecorderEngine` is implemented end to end — but nothing can be
+   compiled until the MSVC toolchain + Windows SDK are reinstalled on the dev machine.
+3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
-2. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
-3. **M5: loopback publish server.** `tiny_http` not yet added; the pure logic is written and
-   tested, only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`.
+4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
 
-### Then M5–M9
+### Then M6–M9
 
 | M | Scope | Notes |
 |---|---|---|
-| M5 | Loopback publish server | `tiny_http` not yet added. Port negotiation, Range, token, Host/Origin checks are written and tested as pure logic; only the server loop is missing. Use `SO_EXCLUSIVEADDRUSE`, **not** `SO_REUSEADDR`. |
-| M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. |
-| M7 | Editing | `render_args()` already builds the command lines and is tested. |
+| M5 | Loopback publish server | **Done** (on `small-changes-idk`, pending merge to `main`). See the M5 section above. |
+| M6 | Tauri shell + UI | Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |
 
@@ -366,10 +491,12 @@ The M2/M3 pattern held: every one of these passed the unit tests.
 ## Open items carried forward
 
 - **ADR-005 action item 5 — code-signing certificate custody.** Unresolved and **blocks M8**.
-- **OAuth client not registered.** Blocks any real Drive round-trip. When you do it: a **Web
-  application** client, `drive.file` scope *only*, and register all five loopback origins
-  `http://127.0.0.1:47821` … `:47825` at the same time (ADR-002 action item 3 — cheap now,
-  annoying later).
+- **OAuth client not registered.** Blocks any real Drive round-trip, and is now the *only*
+  thing blocking it: as of M5 everything up to the browser calling Google works against a real
+  socket. When you do it: a **Web application** client, `drive.file` scope *only*, and register
+  all five loopback origins `http://127.0.0.1:47821` … `:47825` at the same time (ADR-002
+  action item 3 — cheap now, annoying later). Then:
+  `pnpm --filter @vrecnu/publish build` and `cargo run -p vrecnu-cli -- publish <FILE>`.
 - **The ≤150 MB idle RSS budget is at real risk with Tauri.** ADR-006 says to measure in M9
   and amend with numbers attached, and to reopen the ADR rather than reflexively raising the
   budget if the tray mitigation is not enough.
