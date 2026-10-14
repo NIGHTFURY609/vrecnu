@@ -31,7 +31,7 @@ A summary — the detailed, dated status of record is [`HANDOFF.md`](HANDOFF.md)
 | M3 | System audio + microphone | **audio path done and measured** |
 | M4 | Camera + floating bubble | **camera path done and measured** |
 | M5 | Loopback publish server | **done, exercised against a real process** — on `main`; never run against real Drive |
-| M6–M9 | Tauri shell + UI, editing, packaging, budgets | M6 in progress (S1 done); M7–M9 not started (M7 partial: `render_args` is built and tested, nothing calls it yet) |
+| M6–M9 | Tauri shell + UI, editing, packaging, budgets | M6 in progress (S1+S2 done, manual tray checks pending); M7–M9 not started (M7 partial: `render_args` is built and tested, nothing calls it yet) |
 
 Try the recorder as it stands:
 

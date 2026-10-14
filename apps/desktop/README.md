@@ -106,12 +106,12 @@ crates/
   vrecnu-bubble-win32/     the floating camera bubble, raw Win32.
   vrecnu-engine/           orchestration. Owns the threads, knows no shell.
   vrecnu-cli/              headless shell. The swappability proof.
-  vrecnu-shell-tauri/      (M6, S1 landed) the ONLY crate allowed to name Tauri.
+  vrecnu-shell-tauri/      (M6, S1+S2 landed) the ONLY crate allowed to name Tauri.
 ```
 
 ## Status
 
-**M0–M5 complete, all on `main`; M6 S1 (tray shell) done on `feat/m6-tauri-shell`.** On 2026-10-15, `cargo test --workspace` passed **240 tests**
+**M0–M5 complete, all on `main`; M6 S1+S2 (tray shell, TauriShell, read-only IPC, diagnostic screen) done on `feat/m6-tauri-shell`; manual tray checks pending.** On 2026-10-15, `cargo test --workspace` passed **252 tests**
 across 12 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
 its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
 this section summarises it.
@@ -123,8 +123,9 @@ end to end, publish included. Measured against real hardware for M2–M4; M5 aga
 process, with fake completion POSTs.
 
 Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive round trip
-(no OAuth client is registered), and the recorder UI (M6 S2). The Tauri shell exists as a tray
-app that opens its window on demand and destroys it on close (S1).
+(no OAuth client is registered), and the recorder UI (M6 S3+). The Tauri shell exists as a tray
+app that opens its window on demand and destroys it on close (S1), and its window shows a live
+engine snapshot and device summary (S2 diagnostic screen).
 
 | Milestone | Brings | State |
 |---|---|---|
@@ -133,7 +134,7 @@ app that opens its window on demand and destroys it on close (S1).
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
 | M5 | The loopback publish server. | done; on `main` (PR #5) |
-| M6 | The Tauri shell and recorder UI. | in progress — S1 (tray shell) done, S2 next |
+| M6 | The Tauri shell and recorder UI. | in progress — S1+S2 done (manual tray checks pending), S3–S5 next |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
 | M9 | Budget gates. | not started |

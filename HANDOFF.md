@@ -1,7 +1,7 @@
 # vrecnu — handoff
 
 **Last updated:** 2026-10-15
-**Branch:** `feat/m6-tauri-shell` — M6 S1 is on this branch; M0–M5 are all on `main` (M5 merged via PR #5, `0996580`).
+**Branch:** `feat/m6-tauri-shell` — M6 S1 and S2 are on this branch; M0–M5 are all on `main` (M5 merged via PR #5, `0996580`).
 
 > **This file is the project's status of record.** Every change that moves the project —
 > code, a milestone, a verification result, a decision, a blocker — updates it in the same
@@ -20,18 +20,20 @@ Observed passing, not assumed — each line carries the date it was observed:
 apps/desktop>  cargo clippy --all-targets --all-features -- -D warnings
                                                         clean (2026-10-15, rustc 1.99; also after
                                                         deleting both dist/ dirs and rebuilding them)
-apps/desktop>  cargo test --workspace                  pass, 240 tests (2026-10-15; S1 adds none)
+apps/desktop>  cargo test --workspace                  pass, 252 tests (2026-10-15; S2 adds 12)
                  (audio 25, bubble 27, camera 20, capture 16, cli 20, encode 35,
-                  engine 47, namedpipe 2, publish-server 34 unit + 2 loopback,
-                  shell-api 5, types 7)
+                  engine 48, namedpipe 2, publish-server 34 unit + 2 loopback,
+                  shell-api 6, shell-tauri 10, types 7)
 apps/desktop>  cargo fmt --all -- --check              clean (2026-10-15)
 apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-15)
                  (pass -ManifestPath explicitly; $PSScriptRoot comes back
                   empty under some invocations and the default resolves to
                   `\..\Cargo.toml`)
-vrecnu>        pnpm typecheck / lint / test            pass, 145 tests (2026-10-15)
-                 (core 13, ui 2, storage 36, publish 23, web 71)
+vrecnu>        pnpm typecheck / lint / test            pass, 177 tests (2026-10-15)
+                 (core 13, ui 2, storage 36, publish 23, web 71, desktop-ui 32)
 vrecnu>        web, publish and desktop-ui vite builds   succeed (2026-10-15)
+apps/desktop>  clippy, fmt --check, check-shell-boundary.ps1, `vrecnu-cli help`
+                                                        all pass (2026-10-15, re-run for S2)
 ```
 
 **Toolchain note, 2026-10-15:** the dev machine's stable rustc went 1.89 -> 1.99. Tauri 2.12
@@ -412,7 +414,7 @@ engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it
 
 ---
 
-## M6 — Tauri shell: S1 done, S2 next
+## M6 — Tauri shell: S1 and S2 done (manual tray checks pending)
 
 Plan: `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`. Spec:
 `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Branch `feat/m6-tauri-shell`.
@@ -442,6 +444,49 @@ Observed, 2026-10-15:
 Not covered by S1: any recorder UI, engine wiring, clipboard/opener, persistent data dir
 (S2, plan Tasks 5+). `Cargo.lock` grew by about 4.7k lines from Tauri's tree; worth a glance at
 review.
+
+### S2 — TauriShell, engine in managed state, read-only IPC, diagnostic screen (done 2026-10-15)
+
+Commits: `TauriShell` implementing `ShellServices` — clipboard, opener, notifications, ffmpeg,
+data dir (`f556a6c`); event pump + `Session` in Tauri managed state (`3f3deff`); read-only IPC
+commands + the engine JSON contract fixture (`04cc634`); `packages/desktop-ui` engine TS
+mirror, snapshot-seeded reducer, contract tests, diagnostic screen and capability (`a56d1b4`).
+
+Engine fixes made along the way: session ids are seeded from Unix-ms so a relaunch cannot
+overwrite an earlier `vrecnu-<id>.mp4` (`0b0a568`); `EngineEvent` fields are camelCase on the
+wire via `rename_all_fields` (`a566478`).
+
+Pins: `tauri-plugin-clipboard-manager =2.5.0`, `tauri-plugin-opener =2.7.2`,
+`tauri-plugin-notification =2.7.0`, `@tauri-apps/api 2.12.4`.
+
+The contract: Rust writes `packages/desktop-ui/src/__fixtures__/engine.json` (regenerate with
+`VRECNU_UPDATE_FIXTURES=1 cargo test -p vrecnu-shell-tauri contract`); vitest and typecheck pin
+`engine.ts` to it.
+
+Observed, 2026-10-15:
+
+- **Counts:** `cargo test --workspace` 252 (engine 48, shell-api 6, shell-tauri 10, cli 20, ...);
+  TS 177 (desktop-ui 32).
+- **Running app, debug exe, via WebView2 remote debugging (CDP), automated:** after a second
+  launch opened the window, the page rendered `"session": "idle"`, all stats 0, `error: null`,
+  `publishing: false`; devices: 28 sources (1 monitor `monitor:1` 1920x1080, 27 windows
+  reported at 0x0), cameras 2, microphones 1, outputs 1. No console errors, exceptions, CSP
+  violations or IPC permission errors in a 3.5 s capture after reload.
+- **Close and reopen:** `WM_CLOSE` left 0 windows with the process alive; a further launch
+  re-opened the window and the snapshot rendered again (29 sources that time).
+- **WebView2 teardown, 5/5, fresh instance without the debugging env var:** 6 `msedgewebview2`
+  processes with the window open; after `WM_CLOSE` + 10 s: 0 windows, 0 webviews, shell PID alive
+  every cycle.
+- **Still pending, by hand (maintainer):** tray icon visible with no window at startup;
+  left-click opens the window; right-click menu Open / Quit. Not observed by the automated
+  runs.
+
+Known, not yet addressed:
+
+- The opener plugin's error detail may carry the capability-token URL into logs (revisit in S4).
+- `useEngine`'s snapshot dispatch should be guarded under React StrictMode.
+- Disk space on the dev machine ran out once during builds (`apps/desktop/target` is about
+  11 GB).
 
 ---
 
@@ -478,8 +523,8 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: S1 done, S2 next.** Hand-check the tray (icon with no window, left-click, right-click
-   menu), then S2 (recorder UI + engine wiring) per `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`.
+2. **M6: S1 and S2 done; write the S3–S5 plan.** Still hand-check the tray (icon with no window, left-click, right-click
+   menu Open / Quit), then plan S3–S5 (recorder UI, publish surface, polish) against `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
@@ -489,7 +534,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 | M | Scope | Notes |
 |---|---|---|
 | M5 | Loopback publish server | **Done**, on `main` (PR #5). See the M5 section above. |
-| M6 | Tauri shell + UI | **In progress** (S1 done 2026-10-15; S2 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M6 | Tauri shell + UI | **In progress** (S1 and S2 done 2026-10-15; S3–S5 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. Needs `set_clipboard_text` and `open_external_url` for real, and a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |
