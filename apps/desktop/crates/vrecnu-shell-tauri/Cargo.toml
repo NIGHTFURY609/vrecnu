@@ -26,5 +26,14 @@ tauri-build = { version = "=2.7.3", features = [] }
 [dependencies]
 tauri = { version = "=2.12.4", features = ["tray-icon"] }
 tauri-plugin-single-instance = "=2.5.4"
+# Used from Rust only; the webview is granted no permission for any of them (spec D4).
+tauri-plugin-clipboard-manager = "=2.5.0"
+tauri-plugin-opener = "=2.7.2"
+tauri-plugin-notification = "=2.7.0"
+vrecnu-types.workspace = true
+vrecnu-shell-api.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

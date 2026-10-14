@@ -7,6 +7,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
 
+#[allow(dead_code)] // wired in by the next commit
+mod services;
 mod tray;
 mod window;
 
@@ -27,6 +29,9 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             window::open_main(app);
         }))
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             tray::build(app.handle())?;
             Ok(())
