@@ -174,6 +174,17 @@ impl Session {
         }
     }
 
+    /// The configuration the next recording will use.
+    ///
+    /// Not on [`RecorderEngine`], like [`Self::adopt_recording`]. A shell that destroys its
+    /// window on close (the Tauri tray app) needs it: a fresh window shows the engine's
+    /// configuration rather than its own defaults, so the window and a "Start recording" from
+    /// the tray cannot disagree about what will be recorded.
+    #[must_use]
+    pub fn config(&self) -> SessionConfig {
+        self.inner.lock().config.clone()
+    }
+
     /// Points the session at a recording this process did not make.
     ///
     /// Not on [`RecorderEngine`]: a shell driving a live session never needs it. It exists for
@@ -448,35 +459,54 @@ impl RecorderEngine for Session {
         // session exactly where it was rather than in a Recording state with no worker.
         let id = SessionId(self.next_session.fetch_add(1, Ordering::Relaxed));
         let output = self.output_path(id)?;
-        // Built and discarded, on purpose: it is the cheapest way to prove the configuration
-        // can *become* a request — FFmpeg resolves, the data directory is writable — while the
-        // session is still safely in its previous state. `spawn` builds the one that runs.
-        let _validated = {
-            let inner = self.inner.lock();
-            if inner.machine.state() == SessionState::Recording {
+
+        // One lock from the state check to the move into Recording. Checked under one lock and
+        // moved under another, two starts at once (a double click, or the window and the tray
+        // together) both passed the check and both spawned a worker.
+        let mut inner = self.inner.lock();
+        match inner.machine.state() {
+            SessionState::Recording => {
                 return Err(AppError::recoverable(
                     ErrorCode::IllegalState,
                     "A recording is already running.",
                 ));
             }
-            self.build_request(&inner.config, output)?
-        };
-
-        let stop = Arc::new(AtomicBool::new(false));
-        *self.stop.lock() = Arc::clone(&stop);
-
-        {
-            let mut inner = self.inner.lock();
-            inner.session_id = Some(id);
-            inner.elapsed_ms = 0;
-            inner.stats = CaptureStats::default();
-            inner.recording = None;
-            inner.error = None;
-            if inner.machine.state() == SessionState::Idle {
-                self.transition(&mut inner, SessionState::Ready);
+            SessionState::Finalizing => {
+                return Err(AppError::recoverable(
+                    ErrorCode::IllegalState,
+                    "The last recording is still being saved.",
+                )
+                .with_hint("Wait a moment, then start again."));
             }
-            self.transition(&mut inner, SessionState::Recording);
+            SessionState::Idle
+            | SessionState::Ready
+            | SessionState::Stopped
+            | SessionState::Failed => {}
         }
+        // Built and discarded, on purpose: it is the cheapest way to prove the configuration
+        // can *become* a request — FFmpeg resolves, the data directory is writable — while the
+        // session is still safely in its previous state. `spawn` builds the one that runs.
+        // Called under the lock: the shell's path lookups never touch the session, so this
+        // cannot deadlock, and releasing the lock here would reopen the race above.
+        let _validated = self.build_request(&inner.config, output)?;
+
+        // Replaced only once the start is certain. Replacing it earlier would orphan a running
+        // worker's flag on a refused start, and `stop` could then never reach that worker.
+        // Lock order is `inner` then `stop`; nothing takes them the other way round.
+        *self.stop.lock() = Arc::new(AtomicBool::new(false));
+
+        inner.session_id = Some(id);
+        inner.elapsed_ms = 0;
+        inner.stats = CaptureStats::default();
+        inner.recording = None;
+        inner.error = None;
+        // Arm from any resting state, not only Idle. The machine starts only from Ready, and
+        // `transition` drops a refused move without a word, so a recording started from Stopped
+        // or Failed used to run while every shell still showed the old state.
+        if inner.machine.state() != SessionState::Ready {
+            self.transition(&mut inner, SessionState::Ready);
+        }
+        self.transition(&mut inner, SessionState::Recording);
 
         Ok(id)
     }
@@ -932,6 +962,114 @@ mod tests {
 
     fn session() -> Arc<Session> {
         Arc::new(Session::new(Arc::new(StubShell { ffmpeg: None })))
+    }
+
+    /// A shell whose FFmpeg path resolves, so `start` gets past building the request. Nothing
+    /// is spawned: `start` only moves the machine; `spawn` is what runs a worker.
+    fn startable() -> Arc<Session> {
+        Arc::new(Session::new(Arc::new(StubShell {
+            ffmpeg: Some(PathBuf::from("ffmpeg")),
+        })))
+    }
+
+    fn drive_to(session: &Session, states: &[SessionState]) {
+        let mut inner = session.inner.lock();
+        for &state in states {
+            session.transition(&mut inner, state);
+        }
+    }
+
+    #[test]
+    fn a_recording_started_after_a_stopped_one_is_announced() {
+        // The tray offers "Start recording" straight after a recording finishes. The machine
+        // only starts from Ready and `transition` drops a refused move silently, so this used
+        // to record while every shell still showed "stopped".
+        let session = startable();
+        drive_to(
+            &session,
+            &[
+                SessionState::Ready,
+                SessionState::Recording,
+                SessionState::Finalizing,
+                SessionState::Stopped,
+            ],
+        );
+        let events = session.subscribe();
+        RecorderEngine::start(session.as_ref()).unwrap();
+        assert_eq!(session.snapshot().session, SessionState::Recording);
+        assert_eq!(
+            events.try_iter().collect::<Vec<_>>(),
+            vec![
+                EngineEvent::StateChanged {
+                    from: SessionState::Stopped,
+                    to: SessionState::Ready
+                },
+                EngineEvent::StateChanged {
+                    from: SessionState::Ready,
+                    to: SessionState::Recording
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_recording_can_start_straight_from_a_failure() {
+        let session = startable();
+        drive_to(&session, &[SessionState::Failed]);
+        RecorderEngine::start(session.as_ref()).unwrap();
+        assert_eq!(session.snapshot().session, SessionState::Recording);
+    }
+
+    #[test]
+    fn starting_while_the_last_recording_is_still_saving_is_refused() {
+        let session = startable();
+        drive_to(
+            &session,
+            &[
+                SessionState::Ready,
+                SessionState::Recording,
+                SessionState::Finalizing,
+            ],
+        );
+        let err = RecorderEngine::start(session.as_ref()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::IllegalState);
+        assert_eq!(session.snapshot().session, SessionState::Finalizing);
+    }
+
+    #[test]
+    fn simultaneous_starts_produce_exactly_one_recording() {
+        // A double-clicked Record, or the window and the tray at once. Checking the state under
+        // one lock and moving it under another let every caller through.
+        const CALLERS: usize = 8;
+        let session = startable();
+        let gate = Arc::new(std::sync::Barrier::new(CALLERS));
+        let callers: Vec<_> = (0..CALLERS)
+            .map(|_| {
+                let (session, gate) = (Arc::clone(&session), Arc::clone(&gate));
+                std::thread::spawn(move || {
+                    gate.wait();
+                    RecorderEngine::start(session.as_ref()).is_ok()
+                })
+            })
+            .collect();
+        let started = callers
+            .into_iter()
+            .map(|caller| caller.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(started, 1);
+    }
+
+    #[test]
+    fn the_stored_configuration_reads_back() {
+        let session = session();
+        let config = SessionConfig {
+            fps: 60,
+            system_audio: false,
+            ..SessionConfig::default()
+        };
+        RecorderEngine::configure(session.as_ref(), config.clone()).unwrap();
+        assert_eq!(session.config(), config);
     }
 
     #[test]
