@@ -89,6 +89,30 @@ pub fn window_source_id(hwnd: isize) -> CaptureSourceId {
     CaptureSourceId(format!("{WINDOW_PREFIX}{hwnd}"))
 }
 
+/// Where Windows parks a minimized window's rectangle.
+const MINIMIZED_ORIGIN: i32 = -32_000;
+
+/// A window's size, from its screen rectangle (`GetWindowRect`).
+///
+/// This is the outer frame. It includes the invisible resize borders (a few pixels a side on
+/// Windows 10/11) that WGC does not capture, so it is a label for the picker, not the encode
+/// size: the pipeline takes that from the first frame (HANDOFF, M2 wiring note 2). A minimized
+/// window reports `0x0` rather than the taskbar stub Windows parks at `-32000`: its real size
+/// is unknown until it is restored.
+fn window_size(left: i32, top: i32, right: i32, bottom: i32) -> Size {
+    if left <= MINIMIZED_ORIGIN && top <= MINIMIZED_ORIGIN {
+        return Size {
+            width: 0,
+            height: 0,
+        };
+    }
+    let span = |from: i32, to: i32| u32::try_from(to.saturating_sub(from)).unwrap_or(0);
+    Size {
+        width: span(left, right),
+        height: span(top, bottom),
+    }
+}
+
 /// Wraps the sink so the handler can own it while the caller keeps a stop handle.
 struct SinkHandler {
     sink: Box<dyn FrameSink>,
@@ -213,12 +237,13 @@ impl CaptureBackend for WgcBackend {
                     id: window_source_id(window.as_raw_hwnd() as isize),
                     title,
                     kind: CaptureSourceKind::Window,
-                    // A window's size is only known once capture starts; the picker shows a
-                    // thumbnail rather than a number, so zero here is honest.
-                    size: Size {
-                        width: 0,
-                        height: 0,
-                    },
+                    size: window.rect().map_or(
+                        Size {
+                            width: 0,
+                            height: 0,
+                        },
+                        |rect| window_size(rect.left, rect.top, rect.right, rect.bottom),
+                    ),
                     is_primary: false,
                 });
             }
@@ -344,6 +369,52 @@ mod tests {
             .start(&CaptureSourceId("nonsense".into()), Box::new(Discard))
             .unwrap_err();
         assert!(matches!(err, CaptureError::SourceGone(_)));
+    }
+
+    #[test]
+    fn a_window_size_comes_from_its_rectangle() {
+        assert_eq!(
+            window_size(100, 50, 1380, 770),
+            Size {
+                width: 1280,
+                height: 720
+            }
+        );
+    }
+
+    #[test]
+    fn a_window_partly_off_screen_keeps_its_full_size() {
+        assert_eq!(
+            window_size(-200, -10, 1080, 710),
+            Size {
+                width: 1280,
+                height: 720
+            }
+        );
+    }
+
+    #[test]
+    fn a_minimized_window_reports_no_size_rather_than_its_taskbar_stub() {
+        // Windows parks a minimized window at (-32000, -32000) with a ~160x28 rectangle. That
+        // is not the size anyone would record.
+        assert_eq!(
+            window_size(-32_000, -32_000, -31_840, -31_972),
+            Size {
+                width: 0,
+                height: 0
+            }
+        );
+    }
+
+    #[test]
+    fn an_inverted_rectangle_reports_zero_rather_than_wrapping() {
+        assert_eq!(
+            window_size(10, 10, 5, 5),
+            Size {
+                width: 0,
+                height: 0
+            }
+        );
     }
 
     #[test]
