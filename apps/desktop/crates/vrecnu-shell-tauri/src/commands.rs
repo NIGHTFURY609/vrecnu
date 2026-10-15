@@ -10,9 +10,7 @@ use std::sync::Arc;
 use tauri::State;
 use vrecnu_engine::Session;
 use vrecnu_shell_api::{AppError, AppState, RecorderEngine, ShellServices};
-use vrecnu_types::{
-    AudioDevices, CameraInfo, CaptureSource, ErrorCode, SessionConfig, SessionId,
-};
+use vrecnu_types::{AudioDevices, CameraInfo, CaptureSource, ErrorCode, SessionConfig, SessionId};
 
 use crate::services::TauriShell;
 
@@ -87,7 +85,10 @@ fn recording_path(state: &AppState) -> Result<PathBuf, AppError> {
         .as_ref()
         .map(|recording| recording.path.clone())
         .ok_or_else(|| {
-            AppError::recoverable(ErrorCode::IllegalState, "There is no recording to show yet.")
+            AppError::recoverable(
+                ErrorCode::IllegalState,
+                "There is no recording to show yet.",
+            )
         })
 }
 

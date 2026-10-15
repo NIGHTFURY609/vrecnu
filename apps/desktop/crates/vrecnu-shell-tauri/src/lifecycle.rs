@@ -111,7 +111,11 @@ pub(crate) fn is_capturing(state: SessionState) -> bool {
 }
 
 /// Polls `done` until it holds or `timeout` passes. Returns whether it held.
-pub(crate) fn wait_until(timeout: Duration, poll: Duration, mut done: impl FnMut() -> bool) -> bool {
+pub(crate) fn wait_until(
+    timeout: Duration,
+    poll: Duration,
+    mut done: impl FnMut() -> bool,
+) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
         if done() {
@@ -310,7 +314,12 @@ mod tests {
     #[test]
     fn changes_outside_a_recording_leave_the_window_alone() {
         // Reset from the window, or arming, must not close or reopen it under the user.
-        for (from, to) in [(Stopped, Idle), (Failed, Idle), (Idle, Ready), (Idle, Failed)] {
+        for (from, to) in [
+            (Stopped, Idle),
+            (Failed, Idle),
+            (Idle, Ready),
+            (Idle, Failed),
+        ] {
             assert_eq!(window_action(from, to), None, "{from:?} -> {to:?}");
         }
     }
@@ -329,7 +338,10 @@ mod tests {
         );
         for state in [Idle, Ready, Stopped, Failed] {
             let view = tray_view(state, 0);
-            assert_eq!((view.record_label, view.record_enabled), (START_LABEL, true));
+            assert_eq!(
+                (view.record_label, view.record_enabled),
+                (START_LABEL, true)
+            );
         }
     }
 

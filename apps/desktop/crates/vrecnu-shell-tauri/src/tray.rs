@@ -42,7 +42,7 @@ pub(crate) fn build(app: &AppHandle) -> tauri::Result<MenuItem<Wry>> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             OPEN => window::open_main(app),
             RECORD => toggle_recording(app),
-            QUIT => quit(app),
+            QUIT => quit_app(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -88,7 +88,7 @@ fn toggle_recording(app: &AppHandle) {
 /// Quit during a recording stops it and lets FFmpeg finish the file first, so quitting never
 /// leaves a half-written recording. The wait runs off the event loop, so the tray stays
 /// responsive while it lasts.
-fn quit(app: &AppHandle) {
+fn quit_app(app: &AppHandle) {
     let session = session(app);
     if !lifecycle::is_capturing(session.snapshot().session) {
         app.exit(0);
