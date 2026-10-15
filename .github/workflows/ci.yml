@@ -64,9 +64,9 @@ jobs:
           pnpm --filter @vrecnu/publish --filter @vrecnu/desktop-ui build
 
       - name: Install Rust
-        # Pinned here rather than in rust-toolchain.toml, so a pinned patch release cannot
-        # break offline/air-gapped local builds. Cargo's `rust-version` is the floor: a single
-        # 1.90 for the whole workspace (Tauri 2.12 requires it).
+        # CI builds on the latest stable, installed here rather than via rust-toolchain.toml.
+        # The declared floor is `rust-version = "1.90"` in the workspace (Tauri 2.12 requires
+        # it); CI does not test that floor itself.
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

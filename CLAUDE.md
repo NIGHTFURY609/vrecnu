@@ -43,9 +43,11 @@ build later-phase features into an earlier phase.
 - **Plan before large changes.** For anything spanning multiple files or a new subsystem,
   use plan mode / lay out the approach and get agreement before editing.
 - **Prefer the dedicated tools** (Read/Edit/Grep/Glob) over shell `cat`/`sed`/`find`.
-- **Use subagents for verification** on non-trivial work: after implementing, spawn a
-  reviewer to check against the constraints in `AGENTS.md` (scope rules, package boundaries,
-  no committed secrets) before you report done.
+- **Use subagents for verification** on non-trivial work. Implementer subagents run on
+  sonnet; every review, both the per-task spec+quality review and the final whole-branch
+  review, is done by a strict reviewer on opus against the constraints in `AGENTS.md` (scope
+  rules, package boundaries, no committed secrets) before you report done. All other
+  subagents (exploration, research) also run on sonnet.
 - **Keep a task list** for multi-step work so progress is visible.
 - **Update `HANDOFF.md` every time there is an update** — in the same change, never "later".
   Code landing, a milestone/slice starting or finishing, a check passing *or failing*, a
@@ -126,5 +128,3 @@ around it.
 Conventional-commit style (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). Branch off
 `main`; don't push to `main` unless told. Keep commits scoped; update `ARCHITECTURE.md` and
 these guidance files when a decision changes.
-
-Implementer subagents run on sonnet; every review (the per-task spec and quality review, and the final whole-branch review) is done by a strict reviewer on opus.

@@ -8,7 +8,7 @@
 
 **Architecture:** A new crate, `apps/desktop/crates/vrecnu-shell-tauri`, is the only crate that names Tauri. It owns `Arc<Session>`, implements `ShellServices` (`TauriShell`), and forwards `Session::subscribe()` to the webview from a shell-owned thread. A new pnpm package, `packages/desktop-ui`, is the frontend that crate embeds. It holds a TS mirror of the `vrecnu-shell-api` serde shapes and a pure reducer. A JSON fixture written by Rust and read by vitest pins the two together.
 
-**Tech Stack:** Rust 1.89+, Tauri 2 (`tray-icon`, `custom-protocol`), tauri-plugin-{single-instance, clipboard-manager, opener, notification}, crossbeam-channel. TS 5.9.3, React 19.2.8, Vite 8.2.0, Tailwind 4.3.3, vitest 4.1.10, @tauri-apps/api 2.
+**Tech Stack:** Rust 1.90+ (workspace floor; see HANDOFF.md), Tauri 2 (`tray-icon`, `custom-protocol`), tauri-plugin-{single-instance, clipboard-manager, opener, notification}, crossbeam-channel. TS 5.9.3, React 19.2.8, Vite 8.2.0, Tailwind 4.3.3, vitest 4.1.10, @tauri-apps/api 2.
 
 **Spec:** `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. D1 and D2 were approved by the maintainer on 2026-10-14, and S1 and S2 are in scope. S3 to S5 get their own plan once S1's tray, exit and WebView2 behaviour and the exe size are known.
 

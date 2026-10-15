@@ -1,6 +1,6 @@
 # vrecnu — codebase mindmap
 
-**A map of what exists right now**, as of 2026-10-15 (M0–M5 are all on `main`, M6 S1+S2 on `feat/m6-tauri-shell`; M5 merged via
+**A map of what exists right now**, as of 2026-10-15 (M0–M5 and M6 S1+S2 are all on `main`; M6 S1+S2 merged locally, not yet pushed; M5 merged via
 PR #5). Not a plan — `ARCHITECTURE.md` is the plan and `HANDOFF.md` is the running log and the
 **status of record**: this map summarises it and is updated in the same change (`AGENTS.md` §11). This
 document answers one question: *what is actually in this repository, and how much of it works?*
