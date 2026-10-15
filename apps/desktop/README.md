@@ -111,7 +111,7 @@ crates/
 
 ## Status
 
-**M0–M5 complete, all on `main`; M6 S1+S2 (tray shell, TauriShell, read-only IPC, diagnostic screen) done on `main` (merged locally from `feat/m6-tauri-shell`, not yet pushed); tray checks passed 2026-10-15.** On 2026-10-15, `cargo test --workspace` passed **252 tests**
+**M0–M5 complete, all on `main`; M6 S1+S2 (tray shell, TauriShell, read-only IPC, diagnostic screen) done on `main` (merged locally from `feat/m6-tauri-shell`, not yet pushed); tray checks passed 2026-10-15. M6 S3 (recorder screen, Record/Stop from the tray) is done on `feat/m6-s3-recorder`, not merged.** On 2026-10-15, on that branch, `cargo test --workspace` passed **276 tests**
 across 12 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
 its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
 this section summarises it.
@@ -123,9 +123,9 @@ end to end, publish included. Measured against real hardware for M2–M4; M5 aga
 process, with fake completion POSTs.
 
 Not yet done: the M1 bubble hardware measurements (`TESTING.md` §1), a Drive round trip
-(no OAuth client is registered), and the recorder UI (M6 S3+). The Tauri shell exists as a tray
-app that opens its window on demand and destroys it on close (S1), and its window shows a live
-engine snapshot and device summary (S2 diagnostic screen).
+(no OAuth client is registered), and review/publish from the app (M6 S4). The Tauri shell is a tray app that opens its window
+on demand and destroys it on close (S1); on the S3 branch the window records (source, mic/system,
+camera + bubble), closes while recording, and reopens on Saved when the recording stops.
 
 | Milestone | Brings | State |
 |---|---|---|
@@ -134,7 +134,7 @@ engine snapshot and device summary (S2 diagnostic screen).
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
 | M5 | The loopback publish server. | done; on `main` (PR #5) |
-| M6 | The Tauri shell and recorder UI. | in progress — S1+S2 done (tray checks passed 2026-10-15), S3 planned (2026-10-15), S4–S5 next |
+| M6 | The Tauri shell and recorder UI. | in progress — S1+S2 done (tray checks passed 2026-10-15), S3 done 2026-10-15 on `feat/m6-s3-recorder` (not merged), S4–S5 next |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
 | M9 | Budget gates. | not started |
