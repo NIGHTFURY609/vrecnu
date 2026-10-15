@@ -19,7 +19,7 @@ M6 S3 is done on `feat/m6-s3-recorder` (2026-10-15, not merged, not pushed).
 Observed passing, not assumed — each line carries the date it was observed:
 
 ```
-On `feat/m6-s3-recorder` at `5c102ee` (S3):
+On `feat/m6-s3-recorder` at `8cf25a9` (S3):
 
 apps/desktop>  cargo clippy --all-targets --all-features -- -D warnings
                                                         clean (2026-10-15, rustc 1.99)
@@ -29,7 +29,7 @@ apps/desktop>  cargo test --workspace                  pass, 276 tests (2026-10-
                   shell-api 6, shell-tauri 24, types 7)
 apps/desktop>  cargo fmt --all -- --check              clean (2026-10-15)
 apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-15, at
-                                                        `d749899`; S3's last commit touches only the
+                                                        `29c969f`; S3's last commit touches only the
                                                         engine's tests and `start`)
                  (pass -ManifestPath explicitly; $PSScriptRoot comes back
                   empty under some invocations and the default resolves to
@@ -495,7 +495,7 @@ Observed, 2026-10-15:
 Known, not yet addressed:
 
 - The opener plugin's error detail may carry the capability-token URL into logs (revisit in S4).
-- ~~Window capture sources report size 0x0 from `list_sources`~~ — fixed in S3 (`053eb2a`).
+- ~~Window capture sources report size 0x0 from `list_sources`~~ — fixed in S3 (`1a15d87`).
 - Disk space on the dev machine ran out once: `apps/desktop/target/debug` measured 11.1 GB on 2026-10-15, and the Task 8 build failed with LNK1180 when N: reached 0 GB free; regenerable caches were cleared to recover. (`apps/desktop/target` is
   build output, ignored by git.)
 
@@ -505,10 +505,10 @@ Plan: `docs/superpowers/plans/2026-10-15-m6-s3-recorder.md`. Executed inline in 
 maintainer's direction (not per-task sonnet implementers + opus reviews); tests ran once after
 all tasks; one strict opus review of the whole branch, whose two Important findings were fixed.
 
-Commits: plan `b831cf1`; engine `start`/`config` `16778a2`; window sizes `053eb2a`; recorder
-commands + `SessionConfig` in the contract `18c2c7c`; tray observer, Start/Stop, safe Quit
-`bd63c80`; desktop-ui pure modules + resync `b4bf36e`; four screens `ef9c720`; Quit-handler
-shadowing fix + fmt `d749899`; stale-source refusal `5c102ee`.
+Commits: plan `a5d84c7`; engine `start`/`config` `eb6bafe`; window sizes `1a15d87`; recorder
+commands + `SessionConfig` in the contract `0cdf1a3`; tray observer, Start/Stop, safe Quit
+`5af70b7`; desktop-ui pure modules + resync `3a08487`; four screens `9b86837`; Quit-handler
+shadowing fix + fmt `29c969f`; stale-source refusal `8cf25a9`.
 
 Engine fixes, each with a test:
 
