@@ -11,6 +11,7 @@ mod commands;
 #[cfg(test)]
 mod contract_tests;
 mod events;
+mod lifecycle;
 mod services;
 mod tray;
 mod window;
@@ -42,16 +43,24 @@ fn main() {
         .setup(|app| {
             let shell = Arc::new(services::TauriShell::new(app.handle().clone()));
             let session = Arc::new(Session::new(shell.clone()));
-            // Subscribe before anything can emit; the UI recovers older state from
+            // Both subscriptions before anything can emit; the UI recovers older state from
             // get_snapshot, not from replayed events.
             let engine_events = RecorderEngine::subscribe(session.as_ref());
+            let tray_events = RecorderEngine::subscribe(session.as_ref());
             events::spawn_pump(
                 engine_events,
                 events::WebviewSink::new(app.handle().clone()),
             )?;
+            let initial = session.snapshot().session;
+            // Managed before the tray exists: its menu handlers read both.
             app.manage(session);
             app.manage(shell);
-            tray::build(app.handle())?;
+            let record_item = tray::build(app.handle())?;
+            lifecycle::spawn_observer(
+                tray_events,
+                initial,
+                tray::AppTray::new(app.handle().clone(), record_item),
+            )?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
