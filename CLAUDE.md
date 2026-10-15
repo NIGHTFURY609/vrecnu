@@ -127,4 +127,4 @@ Conventional-commit style (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). Bra
 `main`; don't push to `main` unless told. Keep commits scoped; update `ARCHITECTURE.md` and
 these guidance files when a decision changes.
 
-use sonnet for sub agents
+Implementer subagents run on sonnet; every review (the per-task spec and quality review, and the final whole-branch review) is done by a strict reviewer on opus.

@@ -413,7 +413,7 @@ engine's `begin_publish` / `abort_publish` / `submit_publish_result` wired to it
 
 ---
 
-## M6 — Tauri shell: S1 and S2 done (manual tray checks pending)
+## M6 — Tauri shell: S1 and S2 done (tray click/menu checks pending)
 
 Plan: `docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md`. Spec:
 `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Branch `feat/m6-tauri-shell`.
@@ -437,8 +437,8 @@ Observed, 2026-10-15:
   shell process stayed alive. The window is destroyed on close, not hidden.
 - **Single instance:** a second launch exits by itself and the first instance opens/focuses
   its window; a third launch with the window open left exactly one window (same hwnd).
-- **Still pending, by hand (maintainer):** tray icon visible with no window at startup;
-  left-click opens the window; right-click menu Open / Quit.
+- **Tray, partly checked (see S2 below):** the icon and the no-window start are observed; the
+  click and menu checks are still pending.
 
 Not covered by S1: any recorder UI, engine wiring, clipboard/opener, persistent data dir
 (S2, plan Tasks 5+). `Cargo.lock` grew by about 4.7k lines from Tauri's tree; worth a glance at
@@ -477,9 +477,13 @@ Observed, 2026-10-15:
 - **WebView2 teardown, 5/5, fresh instance without the debugging env var:** 6 `msedgewebview2`
   processes with the window open; after `WM_CLOSE` + 10 s: 0 windows, 0 webviews, shell PID alive
   every cycle.
-- **Still pending, by hand (maintainer):** tray icon visible with no window at startup;
-  left-click opens the window; right-click menu Open / Quit. Not observed by the automated
-  runs.
+- **Tray, partial check by the controller, 2026-10-15 (fresh launch):**
+  - **Observed:** no window opened at launch; the shell had 0 WebView2 processes about 7 s after
+    start.
+  - **Observed:** the tray icon is present, tooltip "vrecnu". Windows 11 placed it in the
+    hidden-icons overflow, which is the default for new icons.
+  - **Still pending, by hand (maintainer):** left-click opens the window; right-click menu Open
+    and Quit. The automated attempt was stopped because the maintainer was using the screen.
 
 Known, not yet addressed:
 
@@ -523,8 +527,8 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: S1 and S2 done; write the S3–S5 plan.** Still hand-check the tray (icon with no window, left-click, right-click
-   menu Open / Quit), then plan S3–S5 (recorder UI, publish surface, polish) against `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`.
+2. **M6: S1 and S2 done; write the S3–S5 plan.** Still hand-check the tray (left-click opens the window; right-click
+   menu Open / Quit; icon and no-window start already observed), then plan S3–S5 (recorder UI, publish surface, polish) against `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
