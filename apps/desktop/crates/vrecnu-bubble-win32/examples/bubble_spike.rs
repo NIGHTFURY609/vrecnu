@@ -98,7 +98,7 @@ fn run() {
         }
         frames += 1;
 
-        if matches!(frames % 150, 0) {
+        if frames.is_multiple_of(150) {
             println!(
                 "  {frames} frames, {:.1} fps average",
                 frames as f32 / started.elapsed().as_secs_f32()

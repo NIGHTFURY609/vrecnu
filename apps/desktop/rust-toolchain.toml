@@ -3,7 +3,7 @@
 # channel, which breaks offline and air-gapped builds even when a perfectly good stable
 # toolchain is already installed.
 #
-# The real floor is `rust-version = "1.89"` in Cargo.toml, which cargo enforces at build time
+# The real floor is `rust-version = "1.90"` in Cargo.toml, which cargo enforces at build time
 # and which cannot be satisfied by accident. CI pins an exact toolchain in its setup step,
 # where reproducibility actually matters and the network is available.
 channel = "stable"

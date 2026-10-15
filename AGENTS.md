@@ -383,8 +383,8 @@ Desktop build traps (details in `apps/desktop/README.md`):
 
 - **Build `packages/desktop-ui` before any workspace cargo command.** `tauri::generate_context!`
   fails to compile without `packages/desktop-ui/dist`; `pnpm build` covers it.
-- **Building the whole workspace needs rustc >= 1.90.** `vrecnu-shell-tauri` declares
-  `rust-version = "1.90"` (Tauri 2.12's floor); the engine and `vrecnu-cli` stay at 1.89.
+- **One Rust floor, 1.90, for the whole workspace.** `[workspace.package] rust-version = "1.90"`
+  (Tauri 2.12 requires it) and every crate inherits it; do not add a per-crate override.
 - **Build the publish page first.** `vrecnu-publish-server/build.rs` embeds
   `packages/publish/dist` into the binary at compile time, so run `pnpm build` (or just
   `pnpm --filter @vrecnu/publish build`) **before** `cargo build`/`cargo run` for anything that

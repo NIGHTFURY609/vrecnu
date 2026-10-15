@@ -6,8 +6,8 @@ hatch back to a pure-Rust GUI.
 
 ## Prerequisites
 
-Rust stable (1.89 or newer for the engine and `vrecnu-cli`; **1.90 or newer to build the whole
-workspace**, which is `vrecnu-shell-tauri`'s declared floor) **and the Windows SDK**.
+Rust stable (**1.90 or newer**, one floor for the whole workspace, required by Tauri 2.12)
+**and the Windows SDK**.
 
 > **The Windows SDK is not optional and its absence is confusing.** Without it, `cargo build`
 > — and even `cargo check`, as soon as a build script or proc-macro needs recompiling — fails

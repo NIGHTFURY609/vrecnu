@@ -37,9 +37,8 @@ apps/desktop>  clippy, fmt --check, check-shell-boundary.ps1, `vrecnu-cli help`
 ```
 
 **Toolchain note, 2026-10-15:** the dev machine's stable rustc went 1.89 -> 1.99. Tauri 2.12
-needs rustc >= 1.90, so `vrecnu-shell-tauri` declares `rust-version = "1.90"` while the workspace
-floor stays 1.89 (engine, `vrecnu-cli`); building the whole workspace needs >= 1.90. Moving to
-1.99 also surfaced new-stable clippy hits (`chunks_exact_to_as_chunks` etc.) in `vrecnu-audio`,
+needs rustc >= 1.90, so the workspace now has a single floor, `rust-version = "1.90"`, inherited by
+every crate. Moving to 1.99 also surfaced new-stable clippy hits (`chunks_exact_to_as_chunks` etc.) in `vrecnu-audio`,
 `vrecnu-bubble-win32` and `vrecnu-camera`, fixed in `d155962` — CI uses latest stable, so they
 would have failed on `main` too.
 
@@ -553,7 +552,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
    dies with `memory allocation of N bytes failed` / `STATUS_STACK_BUFFER_OVERRUN`. Common
    right after a VS/SDK install while `TiWorker` and Defender are still indexing.
 4. **`rust-toolchain.toml` says `stable`, not a pinned version** — pinning makes rustup fetch
-   that exact channel and fail offline. `rust-version = "1.89"` in Cargo.toml is the real floor.
+   that exact channel and fail offline. `rust-version = "1.90"` in Cargo.toml is the real floor (one floor for the whole workspace).
 5. **PowerShell 5.1 reads UTF-8 without a BOM as ANSI.** Keep `.ps1` files ASCII-only or they
    fail to parse. Also do not set `$ErrorActionPreference = 'Stop'` around cargo: its ordinary
    progress output goes to stderr and gets turned into a terminating error.

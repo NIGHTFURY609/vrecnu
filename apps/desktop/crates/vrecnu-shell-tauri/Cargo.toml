@@ -3,9 +3,7 @@ name = "vrecnu-shell-tauri"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# The workspace floor stays 1.89 so the engine and vrecnu-cli (the ADR-006 escape hatch) still build
-# on older toolchains; only the Tauri shell needs the newer compiler.
-rust-version = "1.90"
+rust-version.workspace = true
 description = "The Tauri v2 tray shell. The ONLY crate allowed to name tauri/tao/wry/webview2-com (ADR-006)."
 
 [[bin]]

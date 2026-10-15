@@ -65,8 +65,8 @@ jobs:
 
       - name: Install Rust
         # Pinned here rather than in rust-toolchain.toml, so a pinned patch release cannot
-        # break offline/air-gapped local builds. Cargo's `rust-version` is the floor: 1.89 for
-        # the engine, 1.90 for vrecnu-shell-tauri (so the whole workspace needs 1.90).
+        # break offline/air-gapped local builds. Cargo's `rust-version` is the floor: a single
+        # 1.90 for the whole workspace (Tauri 2.12 requires it).
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
