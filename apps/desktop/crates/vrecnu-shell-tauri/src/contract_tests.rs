@@ -8,8 +8,9 @@ use std::path::PathBuf;
 use serde::Serialize;
 use vrecnu_shell_api::{AppError, AppState, EngineEvent};
 use vrecnu_types::{
-    AudioDevice, AudioDevices, CameraInfo, CaptureSource, CaptureSourceId, CaptureSourceKind,
-    CaptureStats, ErrorCode, Recording, RenderId, SessionId, SessionState, Size,
+    AudioDevice, AudioDevices, BubbleSpec, CameraInfo, CaptureSource, CaptureSourceId,
+    CaptureSourceKind, CaptureStats, ErrorCode, Recording, RenderId, SessionConfig, SessionId,
+    SessionState, Size,
 };
 
 const UPDATE_ENV: &str = "VRECNU_UPDATE_FIXTURES";
@@ -24,6 +25,7 @@ struct Fixture {
     sources: Vec<CaptureSource>,
     cameras: Vec<CameraInfo>,
     audio_devices: AudioDevices,
+    session_config: SessionConfig,
 }
 
 const ID: SessionId = SessionId(1_760_000_000_000);
@@ -155,6 +157,15 @@ fn fixture() -> Fixture {
                 is_default: true,
             }],
         },
+        session_config: SessionConfig {
+            source: Some(CaptureSourceId("monitor:1".into())),
+            camera: Some("0".into()),
+            microphone: Some("default".into()),
+            system_audio: true,
+            fps: 30,
+            video_bitrate: 6_000_000,
+            bubble: Some(BubbleSpec::default()),
+        },
     }
 }
 
@@ -167,6 +178,26 @@ fn fixture_path() -> PathBuf {
 fn the_fixture_has_one_event_of_every_variant() {
     let names: BTreeSet<_> = events().iter().map(variant).collect();
     assert_eq!(names.len(), events().len());
+}
+
+#[test]
+fn a_session_config_written_the_way_the_ui_writes_it_deserializes() {
+    // `configure` is the first IPC call whose payload travels TS -> Rust. A field the UI spells
+    // differently fails the whole call, so the camelCase shape is pinned from this side too.
+    let from_ui = serde_json::json!({
+        "source": "window:1234",
+        "camera": null,
+        "microphone": "default",
+        "systemAudio": false,
+        "fps": 30,
+        "videoBitrate": 6_000_000,
+        "bubble": { "diameter": 240, "position": [48, 48], "clickThrough": true }
+    });
+    let config: SessionConfig = serde_json::from_value(from_ui).unwrap();
+    assert_eq!(config.source, Some(CaptureSourceId("window:1234".into())));
+    assert_eq!(config.microphone.as_deref(), Some("default"));
+    assert!(!config.system_audio);
+    assert_eq!(config.bubble, Some(BubbleSpec::default()));
 }
 
 #[test]

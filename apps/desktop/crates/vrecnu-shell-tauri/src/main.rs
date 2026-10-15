@@ -41,7 +41,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let shell = Arc::new(services::TauriShell::new(app.handle().clone()));
-            let session = Arc::new(Session::new(shell));
+            let session = Arc::new(Session::new(shell.clone()));
             // Subscribe before anything can emit; the UI recovers older state from
             // get_snapshot, not from replayed events.
             let engine_events = RecorderEngine::subscribe(session.as_ref());
@@ -50,6 +50,7 @@ fn main() {
                 events::WebviewSink::new(app.handle().clone()),
             )?;
             app.manage(session);
+            app.manage(shell);
             tray::build(app.handle())?;
             Ok(())
         })
@@ -57,7 +58,13 @@ fn main() {
             commands::get_snapshot,
             commands::list_sources,
             commands::list_cameras,
-            commands::list_audio_devices
+            commands::list_audio_devices,
+            commands::get_config,
+            commands::configure,
+            commands::start_recording,
+            commands::stop_recording,
+            commands::reset,
+            commands::reveal_recording
         ])
         .build(tauri::generate_context!());
 
