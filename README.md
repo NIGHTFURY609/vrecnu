@@ -13,6 +13,8 @@ Four invariants govern every decision: **lightweight**, **a no-install path alwa
 
 ## Where the project stands
 
+A summary — the detailed, dated status of record is [`HANDOFF.md`](HANDOFF.md).
+
 | Phase | What | Status |
 |---|---|---|
 | **1** | Web app (PWA) — record, trim, download, upload to Drive | code complete — not yet run against real Google Drive, not deployed |
@@ -23,13 +25,13 @@ Four invariants govern every decision: **lightweight**, **a no-install path alwa
 
 | M | Scope | Status |
 |---|---|---|
-| M0 | Rust workspace (10 crates then, 11 now), the shell boundary and its CI gate | done |
+| M0 | Rust workspace (10 crates then, 12 now), the shell boundary and its CI gate | done |
 | M1 | Floating camera bubble (raw Win32 layered window) | code complete; needs a human at a real screen (`TESTING.md` §1) |
 | M2 | Screen capture → FFmpeg → seekable MP4 | **video path done and measured** |
 | M3 | System audio + microphone | **audio path done and measured** |
 | M4 | Camera + floating bubble | **camera path done and measured** |
-| M5 | Loopback publish server | **done, exercised against a real process** — committed on branch `small-changes-idk`, pending merge to `main`; never run against real Drive |
-| M6–M9 | Tauri shell + UI, editing, packaging, budgets | not started (M7 partial: `render_args` is built and tested, nothing calls it yet) |
+| M5 | Loopback publish server | **done, exercised against a real process** — on `main`; never run against real Drive |
+| M6–M9 | Tauri shell + UI, editing, packaging, budgets | M6 in progress (S1+S2 done, tray checks passed 2026-10-15); M7–M9 not started (M7 partial: `render_args` is built and tested, nothing calls it yet) |
 
 Try the recorder as it stands:
 

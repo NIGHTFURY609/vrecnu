@@ -1,0 +1,139 @@
+{
+  "events": [
+    {
+      "type": "stateChanged",
+      "from": "ready",
+      "to": "recording"
+    },
+    {
+      "type": "elapsed",
+      "ms": 1500
+    },
+    {
+      "type": "audioLevels",
+      "micDb": -12.5,
+      "systemDb": -30.25
+    },
+    {
+      "type": "stats",
+      "framesIn": 300,
+      "framesWritten": 300,
+      "framesDropped": 0,
+      "framesDuplicated": 12,
+      "encoderFps": 29.5
+    },
+    {
+      "type": "warning",
+      "code": "CAPTURE_BACKPRESSURE",
+      "message": "Frames are being dropped."
+    },
+    {
+      "type": "renderProgress",
+      "id": 7,
+      "fraction": 0.25
+    },
+    {
+      "type": "renderDone",
+      "id": 7,
+      "recording": {
+        "session": 1760000000000,
+        "path": "C:/recordings/vrecnu-1760000000000.mp4",
+        "durationMs": 10000,
+        "sizeBytes": 4096,
+        "mimeType": "video/mp4"
+      }
+    },
+    {
+      "type": "publishOpened",
+      "url": "http://127.0.0.1:47821/?t=TOKEN",
+      "port": 47821
+    },
+    {
+      "type": "publishProgress",
+      "bytesSent": 1024,
+      "total": 4096
+    },
+    {
+      "type": "publishDone",
+      "webViewLink": "https://drive.google.com/file/d/FILE_ID/view",
+      "fileId": "FILE_ID"
+    },
+    {
+      "type": "publishFailed",
+      "error": {
+        "code": "PUBLISH_PORTS_BUSY",
+        "message": "All five publish ports are in use.",
+        "hint": "Close whatever is using ports 47821-47825 and try again.",
+        "detail": "bind failed",
+        "recoverable": true,
+        "sessionLost": false
+      }
+    },
+    {
+      "type": "failed",
+      "error": {
+        "code": "PUBLISH_PORTS_BUSY",
+        "message": "All five publish ports are in use.",
+        "hint": "Close whatever is using ports 47821-47825 and try again.",
+        "detail": "bind failed",
+        "recoverable": true,
+        "sessionLost": false
+      }
+    }
+  ],
+  "appState": {
+    "session": "stopped",
+    "sessionId": 1760000000000,
+    "elapsedMs": 10000,
+    "stats": {
+      "framesIn": 300,
+      "framesWritten": 300,
+      "framesDropped": 0,
+      "framesDuplicated": 12,
+      "encoderFps": 29.5
+    },
+    "recording": {
+      "session": 1760000000000,
+      "path": "C:/recordings/vrecnu-1760000000000.mp4",
+      "durationMs": 10000,
+      "sizeBytes": 4096,
+      "mimeType": "video/mp4"
+    },
+    "error": null,
+    "publishing": false
+  },
+  "sources": [
+    {
+      "id": "monitor:1",
+      "title": "Display 1",
+      "kind": "monitor",
+      "size": {
+        "width": 1920,
+        "height": 1080
+      },
+      "isPrimary": true
+    }
+  ],
+  "cameras": [
+    {
+      "id": "0",
+      "name": "USB Camera"
+    }
+  ],
+  "audioDevices": {
+    "inputs": [
+      {
+        "id": "in",
+        "name": "Microphone",
+        "isDefault": true
+      }
+    ],
+    "outputs": [
+      {
+        "id": "out",
+        "name": "Speakers",
+        "isDefault": true
+      }
+    ]
+  }
+}

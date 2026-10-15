@@ -10,8 +10,10 @@ the full project overview, the fixed tech-stack choices, the security rules, and
 notes and re-states only the rules that are easiest to violate. If this file and `AGENTS.md`
 ever disagree, **`AGENTS.md` wins.**
 
-Also read `ARCHITECTURE.md` for *what/why*, and **`docs/adr/`** for *why each rule exists*.
-Order of reading: `ARCHITECTURE.md` → `AGENTS.md` → the relevant ADR → this file.
+Also read `ARCHITECTURE.md` for *what/why*, **`docs/adr/`** for *why each rule exists*, and
+**`HANDOFF.md`** for *where the project stands right now* — it is the project's **status of
+record** (`AGENTS.md` §11).
+Order of reading: `HANDOFF.md` → `ARCHITECTURE.md` → `AGENTS.md` → the relevant ADR → this file.
 
 **When a rule in `AGENTS.md` blocks you, read its ADR before working around it.** Several
 constraints look arbitrary and are not: the publish page's fixed loopback port
@@ -41,10 +43,21 @@ build later-phase features into an earlier phase.
 - **Plan before large changes.** For anything spanning multiple files or a new subsystem,
   use plan mode / lay out the approach and get agreement before editing.
 - **Prefer the dedicated tools** (Read/Edit/Grep/Glob) over shell `cat`/`sed`/`find`.
-- **Use subagents for verification** on non-trivial work: after implementing, spawn a
-  reviewer to check against the constraints in `AGENTS.md` (scope rules, package boundaries,
-  no committed secrets) before you report done.
+- **Use subagents for verification** on non-trivial work. Implementer subagents run on
+  sonnet; every review, both the per-task spec+quality review and the final whole-branch
+  review, is done by a strict reviewer on opus against the constraints in `AGENTS.md` (scope
+  rules, package boundaries, no committed secrets) before you report done. All other
+  subagents (exploration, research) also run on sonnet.
 - **Keep a task list** for multi-step work so progress is visible.
+- **Update `HANDOFF.md` every time there is an update** — in the same change, never "later".
+  Code landing, a milestone/slice starting or finishing, a check passing *or failing*, a
+  decision, a blocker found or cleared, a merge: refresh "Last updated", "Verified state,
+  right now" (with the date each check was observed), the milestone section and "Next
+  actions". Then bring the summaries in step — `mindmap.md`'s ledger, `README.md`'s status
+  table, `apps/desktop/README.md`'s Status. Work is not done while `HANDOFF.md` describes the
+  old state (`AGENTS.md` §11).
+- **Every plan, spec or design doc you write references `HANDOFF.md`** as the status of record
+  in its header, and records progress there rather than keeping its own running status.
 - **Verify, don't assume.** Run `pnpm typecheck` + `pnpm lint` + `pnpm test` for TS work, and
   the Cargo checks in `AGENTS.md` §8 for desktop work (from `apps/desktop`, in PowerShell —
   not Git Bash, whose `link` shadows MSVC's). For recorder/upload changes confirm an actual
@@ -73,7 +86,7 @@ during development, that's fine — but shipped code still follows `AGENTS.md` �
   (ADR-006; it supersedes ADR-001 on the shell question only). *Tauri is an output device and
   an input device, not the application:* capture, audio, camera, encode, the publish server
   and orchestration live in crates with **zero Tauri dependencies**, and only
-  `vrecnu-shell-tauri` (milestone M6 — planned, not created yet) may name `tauri`/`tao`/`wry`/
+  `vrecnu-shell-tauri` (milestone M6 — in progress) may name `tauri`/`tao`/`wry`/
   `webview2-com`. Keep the headless `vrecnu-cli` shell building (it is the link-time proof,
   gated by `apps/desktop/scripts/check-shell-boundary.ps1` in CI) and never add a
   `window.__TAURI__` branch to `packages/publish` — the share link returns over
@@ -104,6 +117,8 @@ during development, that's fine — but shipped code still follows `AGENTS.md` �
   imports. Drive access only through the `StorageProvider` interface.
 - **No FFmpeg-heavy editing in the Phase 1 web app** (trim only). Deep editing is Phase 2.
 - **No content telemetry, ever.**
+- **`HANDOFF.md` is the status of record and is updated with every change** that moves the
+  project; plans and specs link to it (`AGENTS.md` §11).
 
 When a task appears to require breaking one of these, **stop and ask** rather than working
 around it.
@@ -113,5 +128,3 @@ around it.
 Conventional-commit style (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). Branch off
 `main`; don't push to `main` unless told. Keep commits scoped; update `ARCHITECTURE.md` and
 these guidance files when a decision changes.
-
-use sonnet for sub agents

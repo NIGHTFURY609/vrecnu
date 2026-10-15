@@ -48,6 +48,40 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(vite@8.2.0(jiti@2.7.0)(terser@5.49.2))
 
+  packages/desktop-ui:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: 2.12.4
+        version: 2.12.4
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: 4.3.3
+        version: 4.3.3(vite@8.2.0(jiti@2.7.0)(terser@5.49.2))
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 6.0.5
+        version: 6.0.5(vite@8.2.0(jiti@2.7.0)(terser@5.49.2))
+      tailwindcss:
+        specifier: 4.3.3
+        version: 4.3.3
+      vite:
+        specifier: 8.2.0
+        version: 8.2.0(jiti@2.7.0)(terser@5.49.2)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(vite@8.2.0(jiti@2.7.0)(terser@5.49.2))
+
   packages/publish:
     dependencies:
       '@vrecnu/core':
@@ -1125,6 +1159,9 @@ packages:
     resolution: {integrity: sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@tauri-apps/api@2.12.4':
+    resolution: {integrity: sha512-pVmfis+4zT8H0Qhp3xPZx9Ju7kpzvA6rr/PSJPyuwfvucTQ8sVt61NYU9KMkK703UFlYadFmjKA4HhybOtN0gg==}
 
   '@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1':
     resolution: {integrity: sha512-/67zpWDBLV+oYAEL682s1ktXL0HgqX76f6gaVGkGnVZlBbm1zd0v4Bz8MFF2GGhoX9rvfq3KSQHubFHwa6w6/Q==}
@@ -3805,6 +3842,8 @@ snapshots:
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
       vite: 8.2.0(jiti@2.7.0)(terser@5.49.2)
+
+  '@tauri-apps/api@2.12.4': {}
 
   '@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1':
     dependencies:

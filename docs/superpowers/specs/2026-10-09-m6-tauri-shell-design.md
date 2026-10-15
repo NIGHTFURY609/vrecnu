@@ -1,8 +1,10 @@
 # M6 — the Tauri shell (`vrecnu-shell-tauri`)
 
-**Status:** draft design, awaiting maintainer approval (2026-10-09). Nothing below is
-implemented yet. Building any of it needs the MSVC toolchain + Windows SDK, which the dev
-machine lacks as of this date (see `HANDOFF.md`).
+**Status:** approved by the maintainer 2026-10-14 (D1 system browser, D2 packages/desktop-ui). S1+S2 planned in docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md.
+S1+S2 implemented; see HANDOFF.md. The MSVC toolchain + Windows SDK it needs were reinstalled on 2026-10-14.
+**Status of record:** [`HANDOFF.md`](../../../HANDOFF.md) — M6 progress is tracked there, not
+here; update it (and `mindmap.md`'s ledger) whenever a slice below starts, lands or changes
+(`AGENTS.md` §11).
 **Scope:** HANDOFF.md's M6 only — a tray application that drives the existing `Session`
 (`RecorderEngine`) through record → stop → review → publish → link on the clipboard, with the
 smallest UI that makes vrecnu usable without a terminal.
@@ -156,12 +158,14 @@ of failing silently in the UI.
 4. Closing the window leaves no WebView2 renderer process running (the M9 RSS measurement
    depends on it).
 5. `pnpm typecheck`, `pnpm lint`, `pnpm test` and the Cargo checks in `AGENTS.md` §8 pass.
+6. `HANDOFF.md` (status of record) records each slice as it lands, with dated verification,
+   and `mindmap.md`/`README.md` show M6 accordingly (`AGENTS.md` §11).
 
 ## Risks
 
 - **Toolchain.** Tauri needs MSVC, the Windows SDK and the WebView2 runtime (Windows 11 ships
-  it). The first two are missing on the dev machine as of 2026-10-09; nothing in S1+ can be
-  compiled until they are back.
+  it). The first two went missing on the dev machine on 2026-10-08 and were reinstalled on
+  2026-10-14, so S1+ can now be compiled.
 - **RSS** (ADR-006's stated risk) — mitigated by D1 and D3, measured in M9.
 - **Exe size.** Tauri adds a few MB on top of the engine and the 237 KB publish page, against
   the ≤15 MB budget in AGENTS.md §1. Measure at the end of S1, not at M9.

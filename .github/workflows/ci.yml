@@ -47,9 +47,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The desktop crates embed two Vite builds at compile time: the publish page
+      # (vrecnu-publish-server, ADR-002) and the shell's UI (vrecnu-shell-tauri, whose
+      # tauri::generate_context! fails outright if packages/desktop-ui/dist is missing).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build the embedded frontends
+        working-directory: .
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @vrecnu/publish --filter @vrecnu/desktop-ui build
+
       - name: Install Rust
-        # Pinned here rather than in rust-toolchain.toml, so a pinned patch release cannot
-        # break offline/air-gapped local builds. Cargo's `rust-version = "1.89"` is the floor.
+        # CI builds on the latest stable, installed here rather than via rust-toolchain.toml.
+        # The declared floor is `rust-version = "1.90"` in the workspace (Tauri 2.12 requires
+        # it); CI does not test that floor itself.
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

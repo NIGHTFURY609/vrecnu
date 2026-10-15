@@ -16,3 +16,6 @@ Thumbs.db
 # Local tooling state and scratch captures — AGENTS.md §9 (no generated artifacts in git).
 .tokensave/
 Screenshot*.png
+
+# tauri-build writes generated schemas here.
+apps/desktop/crates/vrecnu-shell-tauri/gen/

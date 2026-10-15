@@ -1,0 +1,41 @@
+[package]
+name = "vrecnu-shell-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The Tauri v2 tray shell. The ONLY crate allowed to name tauri/tao/wry/webview2-com (ADR-006)."
+
+[[bin]]
+name = "vrecnu-shell-tauri"
+path = "src/main.rs"
+
+[features]
+default = ["custom-protocol"]
+# Serve the embedded packages/desktop-ui/dist rather than a dev-server URL. On by default so a
+# plain `cargo run` is the real app: vrecnu builds with Cargo, not the Tauri CLI (AGENTS.md §8).
+custom-protocol = ["tauri/custom-protocol"]
+
+# Tauri is declared here and nowhere else. The workspace table deliberately does not list it
+# (apps/desktop/Cargo.toml), so no other crate can pick it up with `.workspace = true`.
+[build-dependencies]
+tauri-build = { version = "=2.7.3", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.4", features = ["tray-icon"] }
+tauri-plugin-single-instance = "=2.5.4"
+# Used from Rust only; the webview is granted no permission for any of them (spec D4).
+tauri-plugin-clipboard-manager = "=2.5.0"
+tauri-plugin-opener = "=2.7.2"
+tauri-plugin-notification = "=2.7.0"
+vrecnu-types.workspace = true
+vrecnu-shell-api.workspace = true
+vrecnu-engine.workspace = true
+crossbeam-channel.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+serde.workspace = true
+serde_json.workspace = true

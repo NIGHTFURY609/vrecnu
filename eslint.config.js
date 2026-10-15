@@ -68,6 +68,7 @@ export default tseslint.config(
             "@vrecnu/ui",
             "@vrecnu/publish",
             "@vrecnu/web",
+            "@tauri-apps/*",
           ],
         },
       ],
@@ -75,7 +76,7 @@ export default tseslint.config(
   },
   // packages/ui, packages/publish, packages/web: full browser environment + React rules.
   {
-    files: ["packages/ui/**/*.{ts,tsx}", "packages/publish/**/*.{ts,tsx}", "packages/web/**/*.{ts,tsx}"],
+    files: ["packages/ui/**/*.{ts,tsx}", "packages/publish/**/*.{ts,tsx}", "packages/web/**/*.{ts,tsx}", "packages/desktop-ui/**/*.{ts,tsx}"],
     languageOptions: {
       globals: { ...globals.browser },
     },
@@ -83,6 +84,20 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+    },
+  },
+  // ADR-006: Tauri is confined to one crate on the Rust side and one package on the TS side.
+  // This turns "no __TAURI__ branch in packages/publish" into a lint failure, not a review
+  // comment. core/storage carry the same ban in their own block above, because a second
+  // no-restricted-imports entry for those files would replace theirs rather than merge.
+  {
+    files: ["packages/**/*.{ts,tsx}"],
+    ignores: ["packages/desktop-ui/**", "packages/core/**", "packages/storage/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [{ group: ["@tauri-apps/*"], message: "Only packages/desktop-ui may import Tauri (ADR-006)." }] },
+      ],
     },
   },
   // Dedicated Web Workers (OPFS writer, etc.) run in a worker global scope, not window.
