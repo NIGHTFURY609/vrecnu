@@ -460,6 +460,25 @@ impl RecorderEngine for Session {
         let id = SessionId(self.next_session.fetch_add(1, Ordering::Relaxed));
         let output = self.output_path(id)?;
 
+        // A remembered window may have closed since it was chosen. A shell with no picker open
+        // (the tray) cannot notice, so the engine refuses here, before the machine moves. It
+        // does not fall back to the whole screen: that would record what the user chose to leave
+        // out. Enumerated outside the lock, so a slow enumeration never stalls `snapshot`.
+        let wanted = self.inner.lock().config.source.clone();
+        if let Some(source) = wanted {
+            let present = pipeline::list_capture_sources()
+                .map_err(AppError::from)?
+                .iter()
+                .any(|candidate| candidate.id == source);
+            if !present {
+                return Err(AppError::recoverable(
+                    ErrorCode::CaptureSourceGone,
+                    "What you chose to record is no longer there.",
+                )
+                .with_hint("Open vrecnu and choose a screen or window."));
+            }
+        }
+
         // One lock from the state check to the move into Recording. Checked under one lock and
         // moved under another, two starts at once (a double click, or the window and the tray
         // together) both passed the check and both spawned a worker.
@@ -1058,6 +1077,29 @@ mod tests {
             .filter(|ok| *ok)
             .count();
         assert_eq!(started, 1);
+    }
+
+    #[test]
+    fn a_remembered_window_that_has_closed_is_refused_before_recording() {
+        // The tray's "Start recording" uses the stored choice with no window open to reconcile
+        // it. Without this check the session went to Recording, the worker failed with
+        // SourceGone, and a failure screen popped up; quietly recording the whole screen
+        // instead would capture what the user deliberately left out.
+        let session = startable();
+        RecorderEngine::configure(
+            session.as_ref(),
+            SessionConfig {
+                // No live window has HWND 1.
+                source: Some(CaptureSourceId("window:1".into())),
+                ..SessionConfig::default()
+            },
+        )
+        .unwrap();
+        let err = RecorderEngine::start(session.as_ref()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::CaptureSourceGone);
+        assert!(err.recoverable);
+        assert!(!err.session_lost, "nothing was recorded yet");
+        assert_eq!(session.snapshot().session, SessionState::Idle);
     }
 
     #[test]
