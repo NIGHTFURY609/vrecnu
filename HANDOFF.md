@@ -497,7 +497,7 @@ Observed, 2026-10-15:
 Known, not yet addressed:
 
 - The opener plugin's error detail may carry the capability-token URL into logs (revisit in S4).
-- Window capture sources report size 0x0 from `list_sources` (monitor sizes are correct); the S3 source picker needs real window sizes or must not rely on them.
+- Window capture sources report size 0x0 from `list_sources` (monitor sizes are correct); the maintainer decided (2026-10-15) to fix this in the engine as part of S3.
 - Disk space on the dev machine ran out once: `apps/desktop/target/debug` measured 11.1 GB on 2026-10-15, and the Task 8 build failed with LNK1180 when N: reached 0 GB free; regenerable caches were cleared to recover. (`apps/desktop/target` is
   build output, ignored by git.)
 
@@ -536,8 +536,16 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: S1 and S2 done; write the S3–S5 plan** (recorder UI, publish surface, polish)
-   against `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`.
+2. **M6: S1 and S2 done; write the S3 plan next** (recorder screen, Record/Stop from the
+   tray, a 10 s screen + mic recording that plays) against
+   `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Decided by the maintainer
+   on 2026-10-15:
+   - **Fix the 0x0 window-source sizes in the engine** (`list_sources`), as part of S3,
+     rather than having the picker work around them.
+   - **Same flow as S1+S2:** plan first, sonnet implementer subagents, a strict opus review
+     per task and for the whole branch (the CLAUDE.md rule).
+   - Start S3 in a fresh session; M6 S1+S2 are merged to `main` locally (`595a1d5`) and the
+     maintainer pushes them by hand.
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
