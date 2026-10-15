@@ -536,9 +536,13 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: S1 and S2 done; write the S3 plan next** (recorder screen, Record/Stop from the
-   tray, a 10 s screen + mic recording that plays) against
-   `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Decided by the maintainer
+2. **M6: S1 and S2 done; the S3 plan is written** (2026-10-15,
+   `docs/superpowers/plans/2026-10-15-m6-s3-recorder.md`, uncommitted on `main` until its
+   Task 0 branches to `feat/m6-s3-recorder`): recorder screen, Record/Stop from the tray, a
+   10 s screen + mic recording that plays. Next: the maintainer reviews the plan, then it is
+   executed. Writing it turned up an engine bug S3 would have hit on its second recording:
+   `Session::start` from `Stopped`/`Failed` records while the state stays `Stopped`, and two
+   simultaneous starts both spawn a worker. Plan Task 1 fixes both. Decided by the maintainer
    on 2026-10-15:
    - **Fix the 0x0 window-source sizes in the engine** (`list_sources`), as part of S3,
      rather than having the picker work around them.
@@ -555,7 +559,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 | M | Scope | Notes |
 |---|---|---|
 | M5 | Loopback publish server | **Done**, on `main` (PR #5). See the M5 section above. |
-| M6 | Tauri shell + UI | **In progress** (S1 and S2 done 2026-10-15; S3–S5 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. `TauriShell` already implements `set_clipboard_text` and `open_external_url` (`f556a6c`); they get wired into the publish flow in S4. S3–S5 remain, including a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M6 | Tauri shell + UI | **In progress** (S1 and S2 done 2026-10-15; S3 planned 2026-10-15; S4–S5 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. `TauriShell` already implements `set_clipboard_text` and `open_external_url` (`f556a6c`); they get wired into the publish flow in S4. S3–S5 remain, including a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |
