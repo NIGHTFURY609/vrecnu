@@ -38,6 +38,46 @@ export function reduce(store: Store, action: Action): Store {
   return { status: "ready", view: apply(store.view, action.event) };
 }
 
+/**
+ * A state change is the event whose consequences the reducer cannot see: Stopped arrives
+ * without the recording, Recording without the reset counters. The snapshot has both, so the
+ * hook re-reads it after every state change, a handful per recording.
+ */
+export function needsResync(event: EngineEvent): boolean {
+  return event.type === "stateChanged";
+}
+
+export type Screen = "recorder" | "recording" | "saved" | "failed";
+
+export function screenFor(app: AppState): Screen {
+  switch (app.session) {
+    case "idle":
+    case "ready":
+      return "recorder";
+    case "recording":
+    case "finalizing":
+      return "recording";
+    case "stopped":
+      return "saved";
+    case "failed":
+      return "failed";
+  }
+}
+
+/**
+ * Only the most recently started read is delivered. Ready -> Recording and Finalizing ->
+ * Stopped can each trigger a re-read within milliseconds, and the replies can cross; applying
+ * an older snapshot last would strand the window on the earlier state.
+ */
+export function latestOnly<T>(read: () => Promise<T>, deliver: (value: T) => void): () => Promise<void> {
+  let latest = 0;
+  return async () => {
+    const ticket = ++latest;
+    const value = await read();
+    if (ticket === latest) deliver(value);
+  };
+}
+
 function fromSnapshot(app: AppState): EngineView {
   return {
     app,
