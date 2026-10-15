@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../__fixtures__/engine.json";
 import type { AppState, EngineEvent } from "../engine";
-import { initialStore, MAX_WARNINGS, reduce, type Store } from "../state";
+import { initialStore, latestOnly, MAX_WARNINGS, needsResync, reduce, screenFor, type Store } from "../state";
 
 const snapshot = fixture.appState as unknown as AppState;
 const ev = (event: EngineEvent) => ({ kind: "event", event }) as const;
@@ -49,5 +49,45 @@ describe("reduce", () => {
   it("a snapshot with publishing true seeds the open phase", () => {
     const s = reduce(initialStore, { kind: "snapshot", state: { ...snapshot, publishing: true } });
     expect(ready(s).publish.phase).toBe("open");
+  });
+});
+
+describe("needsResync", () => {
+  it("re-reads the snapshot after a state change, which carries no recording", () => {
+    expect(needsResync({ type: "stateChanged", from: "finalizing", to: "stopped" })).toBe(true);
+  });
+
+  it("does not re-read on the ~4 Hz clock", () => {
+    expect(needsResync({ type: "elapsed", ms: 1 })).toBe(false);
+  });
+});
+
+describe("screenFor", () => {
+  it.each([
+    ["idle", "recorder"],
+    ["ready", "recorder"],
+    ["recording", "recording"],
+    ["finalizing", "recording"],
+    ["stopped", "saved"],
+    ["failed", "failed"],
+  ] as const)("%s shows %s", (session, screen) => {
+    expect(screenFor({ ...snapshot, session })).toBe(screen);
+  });
+});
+
+describe("latestOnly", () => {
+  it("drops a read that resolves after a newer one", async () => {
+    const resolvers: ((value: string) => void)[] = [];
+    const delivered: string[] = [];
+    const sync = latestOnly(
+      () => new Promise<string>((resolve) => resolvers.push(resolve)),
+      (value) => delivered.push(value),
+    );
+    const first = sync();
+    const second = sync();
+    resolvers[1]?.("newer");
+    resolvers[0]?.("older");
+    await Promise.all([first, second]);
+    expect(delivered).toEqual(["newer"]);
   });
 });

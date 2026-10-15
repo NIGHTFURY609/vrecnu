@@ -135,5 +135,21 @@
         "isDefault": true
       }
     ]
+  },
+  "sessionConfig": {
+    "source": "monitor:1",
+    "camera": "0",
+    "microphone": "default",
+    "systemAudio": true,
+    "fps": 30,
+    "videoBitrate": 6000000,
+    "bubble": {
+      "diameter": 240,
+      "position": [
+        48,
+        48
+      ],
+      "clickThrough": true
+    }
   }
 }

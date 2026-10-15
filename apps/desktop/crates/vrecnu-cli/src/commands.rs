@@ -358,8 +358,8 @@ fn sources() -> Result<(), CliError> {
     }
     for source in sources {
         let marker = if source.is_primary { "*" } else { " " };
-        // Monitors know their size; a window's is only known once capture starts, and printing
-        // `0x0` for it is more honest than printing a guess the picker would then contradict.
+        // A minimized window's size is unknown until it is restored, and the engine reports it
+        // as 0x0; print `-` rather than a size the recording would contradict.
         let size = if source.size.width == 0 {
             String::from("-")
         } else {

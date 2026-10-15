@@ -53,6 +53,9 @@ importers:
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
+      '@vrecnu/ui':
+        specifier: workspace:*
+        version: link:../ui
       react:
         specifier: 19.2.8
         version: 19.2.8

@@ -3,6 +3,7 @@
 **Last updated:** 2026-10-15
 **Branch:** `main` — M0–M5 and M6 S1+S2 are on `main` (M6 S1+S2 merged locally from
 `feat/m6-tauri-shell` on 2026-10-15, not yet pushed; M5 merged via PR #5, `0996580`).
+M6 S3 is done on `feat/m6-s3-recorder` (2026-10-15, not merged, not pushed).
 
 > **This file is the project's status of record.** Every change that moves the project —
 > code, a milestone, a verification result, a decision, a blocker — updates it in the same
@@ -18,27 +19,24 @@
 Observed passing, not assumed — each line carries the date it was observed:
 
 ```
+On `feat/m6-s3-recorder` at `8cf25a9` (S3):
+
 apps/desktop>  cargo clippy --all-targets --all-features -- -D warnings
-                                                        clean (2026-10-15, rustc 1.99; also after
-                                                        deleting both dist/ dirs and rebuilding them;
-                                                        re-run 2026-10-15 after the 1.90 floor change,
-                                                        `ea54047`)
-apps/desktop>  cargo test --workspace                  pass, 252 tests (2026-10-15; S2 adds 12;
-                                                        re-run after `ea54047`)
-                 (audio 25, bubble 27, camera 20, capture 16, cli 20, encode 35,
-                  engine 48, namedpipe 2, publish-server 34 unit + 2 loopback,
-                  shell-api 6, shell-tauri 10, types 7)
-apps/desktop>  cargo fmt --all -- --check              clean (2026-10-15, re-run after `ea54047`)
-apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-15,
-                                                        re-run after `ea54047`)
+                                                        clean (2026-10-15, rustc 1.99)
+apps/desktop>  cargo test --workspace                  pass, 276 tests (2026-10-15; S3 adds 24)
+                 (audio 25, bubble 27, camera 20, capture 20, cli 20, encode 35,
+                  engine 54, namedpipe 2, publish-server 34 unit + 2 loopback,
+                  shell-api 6, shell-tauri 24, types 7)
+apps/desktop>  cargo fmt --all -- --check              clean (2026-10-15)
+apps/desktop>  scripts/check-shell-boundary.ps1        pass, incl. link-time proof (2026-10-15, at
+                                                        `29c969f`; S3's last commit touches only the
+                                                        engine's tests and `start`)
                  (pass -ManifestPath explicitly; $PSScriptRoot comes back
                   empty under some invocations and the default resolves to
                   `\..\Cargo.toml`)
-vrecnu>        pnpm typecheck / lint / test            pass, 177 tests (2026-10-15)
-                 (core 13, ui 2, storage 36, publish 23, web 71, desktop-ui 32)
-vrecnu>        web, publish and desktop-ui vite builds   succeed (2026-10-15)
-apps/desktop>  clippy, fmt --check, check-shell-boundary.ps1, `vrecnu-cli help`
-                                                        all pass (2026-10-15, re-run for S2)
+vrecnu>        pnpm typecheck / lint / test            pass, 205 tests (2026-10-15)
+                 (core 13, ui 2, storage 36, publish 23, web 71, desktop-ui 60)
+vrecnu>        publish and desktop-ui vite builds       succeed (2026-10-15)
 ```
 
 **Toolchain note, 2026-10-15:** the dev machine's stable rustc went 1.89 -> 1.99. Tauri 2.12
@@ -497,9 +495,83 @@ Observed, 2026-10-15:
 Known, not yet addressed:
 
 - The opener plugin's error detail may carry the capability-token URL into logs (revisit in S4).
-- Window capture sources report size 0x0 from `list_sources` (monitor sizes are correct); the maintainer decided (2026-10-15) to fix this in the engine as part of S3.
+- ~~Window capture sources report size 0x0 from `list_sources`~~ — fixed in S3 (`1a15d87`).
 - Disk space on the dev machine ran out once: `apps/desktop/target/debug` measured 11.1 GB on 2026-10-15, and the Task 8 build failed with LNK1180 when N: reached 0 GB free; regenerable caches were cleared to recover. (`apps/desktop/target` is
   build output, ignored by git.)
+
+### S3 — recorder screen, Record/Stop from the tray (done 2026-10-15, on `feat/m6-s3-recorder`)
+
+Plan: `docs/superpowers/plans/2026-10-15-m6-s3-recorder.md`. Executed inline in one session at the
+maintainer's direction (not per-task sonnet implementers + opus reviews); tests ran once after
+all tasks; one strict opus review of the whole branch, whose two Important findings were fixed.
+
+Commits: plan `a5d84c7`; engine `start`/`config` `eb6bafe`; window sizes `1a15d87`; recorder
+commands + `SessionConfig` in the contract `0cdf1a3`; tray observer, Start/Stop, safe Quit
+`5af70b7`; desktop-ui pure modules + resync `3a08487`; four screens `9b86837`; Quit-handler
+shadowing fix + fmt `29c969f`; stale-source refusal `8cf25a9`.
+
+Engine fixes, each with a test:
+
+- **`Session::start` from `Stopped`/`Failed` recorded while the state stayed `Stopped`.** The
+  machine starts only from `Ready` and `transition` drops a refused move silently. It now arms from
+  any resting state, refuses `Finalizing` ("still being saved"), and holds one lock from the state
+  check to `Recording`, so two simultaneous starts give exactly one recording (8-thread test).
+  RED was observed by restoring the old arm condition: the Stopped and Failed tests failed.
+- **Window sources reported 0x0.** Now the outer window rectangle (`GetWindowRect`); a minimized
+  window reports 0x0 (its real size is unknown until restored).
+- **A remembered source that has gone is refused before recording** (`CaptureSourceGone`,
+  recoverable). Found by the whole-branch review: the tray starts from the stored choice with no
+  picker open, so a closed window took the session to Recording and then Failed. It refuses
+  rather than falling back to the whole screen, which would record what a user who chose one
+  window left out. The window still falls back to the primary screen when it opens.
+- `Session::config()` exposes the stored configuration, so a fresh window and the tray agree.
+
+Observed on hardware, 2026-10-15 (debug exe, driven over WebView2 CDP + UI Automation):
+
+- **`vrecnu-cli sources`:** 1 monitor (1920x1080), 10 windows, all 10 with a size (S2: none).
+- **Recorder screen:** screens first with the primary marked, windows with sizes, Microphone /
+  System audio / Camera reflect the devices (2 cameras, 1 mic, 1 output). Toggling Microphone on
+  and System audio off reached the engine immediately (`get_config` returned them).
+- **Record:** the window closed ~1.1 s after the click; 10 s later, 0 `msedgewebview2` processes
+  under the shell. FFmpeg started (`h264_mf`, audio on). Windows showed the mic in use.
+- **Tray tooltip while recording:** `vrecnu - recording 0:46` (read via UI Automation from the
+  overflow). **Choosing "Stop recording" / "Start recording" / "Quit" from the tray menu was NOT
+  exercised**: three attempts to open the menu by synthesized right-click failed (the taskbar is
+  auto-hide and the overflow button drops out of the UI tree). Needs a manual check.
+- **Window opened mid-recording** showed the Recording screen (`1:49`, frames dropped so far);
+  its Stop went to **Saved** within ~1 s: file name, length 1:47, 24.5 MB.
+- **The file:** `ffprobe` h264 1920x1080 (~29.99 fps avg) + aac 48 kHz stereo, 107.68 s;
+  `volumedetect` mean -37.7 dB, max -14.3 dB (real mic audio); seeks at 60 s. The first frame
+  does **not** contain the vrecnu window.
+- **Frames dropped:** 102 of 3229 (first recording) and 46 of 731 (second), all
+  `dropped_by_capture`, `dropped_by_ffmpeg=0` — the known mic warm-up contention (M4 "Known"),
+  larger than M4's ~26 while builds and a review agent ran on the same machine. Not fixed in S3.
+- **Show in folder** opened Explorer on `recordings` with the file selected.
+- **Start from `Stopped`** (via `start_recording`, the same engine call the tray makes): the
+  window closed, the session recorded (reopened window showed `0:16`), Stop -> Saved; 24.42 s,
+  h264 + aac. This is the `start` fix running in the app.
+- **New recording** returned to the Recorder with Microphone still on and System audio off.
+- **Window close, 3 cycles:** 6 WebView2 processes open -> 0 ten seconds after `WM_CLOSE`, shell
+  alive each time.
+- **Size:** release `vrecnu-shell-tauri.exe` is **4.15 MB** (S2: 3.90 MB), budget 15 MB.
+
+Not observed: Quit while recording (code-reviewed and unit-tested `wait_until`, not run), and
+the tray menu items generally (above).
+
+Known, deferred from the review (minor):
+
+- `reset` is accepted while Recording/Finalizing; newly reachable over IPC (no UI path).
+- `spawn` rebuilds the request after `start` releases the lock; a failure there leaves the
+  session in Recording with no worker.
+- **Camera ids are nokhwa indexes:** unplugging camera 0 makes another camera "0" and the
+  window's reconciliation keeps it, so the next recording uses a different camera. HWND reuse
+  is the same exposure for windows, rarer. Fix: keep the chosen name with the id.
+- The tray item acts on the current state, not on its possibly stale label.
+- A snapshot resync replaces event-only view fields (warnings, levels, publish phase) — latent
+  until S4 renders them; a rejected last resync leaves Saved on "Saving the recording…".
+- Window sizes are the outer frame, so a maximized window reads larger than its monitor.
+- `Window::enumerate` lists some invisible system windows (one 1920x1080 "input experience"
+  window here); pre-existing filtering, not S3.
 
 ---
 
@@ -536,16 +608,13 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 1. **Register the OAuth client and run the round trip.** Everything on our side is now built
    and proven; `vrecnu-cli publish <FILE>` is a one-command way to try it. This is the single
    highest-value action left in the project and no amount of code substitutes for it.
-2. **M6: S1 and S2 done; write the S3 plan next** (recorder screen, Record/Stop from the
-   tray, a 10 s screen + mic recording that plays) against
-   `docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`. Decided by the maintainer
-   on 2026-10-15:
-   - **Fix the 0x0 window-source sizes in the engine** (`list_sources`), as part of S3,
-     rather than having the picker work around them.
-   - **Same flow as S1+S2:** plan first, sonnet implementer subagents, a strict opus review
-     per task and for the whole branch (the CLAUDE.md rule).
-   - Start S3 in a fresh session; M6 S1+S2 are merged to `main` locally (`595a1d5`) and the
-     maintainer pushes them by hand.
+2. **M6: S1, S2 and S3 done** (S3 on `feat/m6-s3-recorder`, 2026-10-15; see the S3 section).
+   Before merging S3, the maintainer checks by hand what automation could not reach: the tray
+   menu's "Stop recording" / "Start recording", and **Quit while recording** (the file must
+   still play). Then merge and push (by hand), and plan **S4**: Review (`<video>` over the asset
+   protocol), Publish -> system browser, progress + link from events, clipboard. S4 should pick
+   up the deferred S3 minors that touch it (resync wiping the publish phase; the camera-id
+   identity issue).
 3. **Window capture with a camera has not been exercised** — it is the one path that still burns
    the overlay in, and the one where `camera_position` still matters.
 4. **Multi-monitor is still untested**, though the fix in bug 1 above is what it needed.
@@ -555,7 +624,7 @@ and clippy could not run until the toolchain was reinstalled, and both passed on
 | M | Scope | Notes |
 |---|---|---|
 | M5 | Loopback publish server | **Done**, on `main` (PR #5). See the M5 section above. |
-| M6 | Tauri shell + UI | **In progress** (S1 and S2 done 2026-10-15; S3–S5 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. `TauriShell` already implements `set_clipboard_text` and `open_external_url` (`f556a6c`); they get wired into the publish flow in S4. S3–S5 remain, including a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
+| M6 | Tauri shell + UI | **In progress** (S1 and S2 done 2026-10-15; S3 done 2026-10-15 on `feat/m6-s3-recorder`, not merged; S4–S5 next). Creates `vrecnu-shell-tauri`, the only crate allowed to name Tauri. Tray app that **destroys** its window on dismiss. `TauriShell` already implements `set_clipboard_text` and `open_external_url` (`f556a6c`); they get wired into the publish flow in S4. S4–S5 remain, including a `PublishSurface` — the engine already emits `PublishOpened`/`PublishProgress`/`PublishDone`. |
 | M7 | Editing | Partial: `render_args()` already builds the command lines and is tested, but nothing calls it yet. |
 | M8 | Packaging | NSIS `installMode: "currentUser"`, `tauri-plugin-updater`, stripped FFmpeg fetched + SHA-256 verified. **Blocked on a code-signing cert** (ADR-005 action item 5). |
 | M9 | Budget gates | Measure RSS and amend AGENTS §1 with real numbers. |

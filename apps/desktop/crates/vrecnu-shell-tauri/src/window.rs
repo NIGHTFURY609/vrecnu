@@ -27,3 +27,16 @@ pub(crate) fn open_main(app: &AppHandle) {
         tracing::error!(%err, "could not open the window");
     }
 }
+
+/// Destroys the main window, if one is open.
+///
+/// `destroy`, not `close`: there is no close handler to run, and destroying is what releases
+/// the WebView2 renderer. That matters most here, because this runs as a recording starts and
+/// a renderer left running would be recorded and would cost RSS for the whole recording.
+pub(crate) fn close_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN) {
+        if let Err(err) = window.destroy() {
+            tracing::warn!(%err, "could not close the window");
+        }
+    }
+}

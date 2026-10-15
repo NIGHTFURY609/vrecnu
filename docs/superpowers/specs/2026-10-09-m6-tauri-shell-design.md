@@ -1,6 +1,6 @@
 # M6 — the Tauri shell (`vrecnu-shell-tauri`)
 
-**Status:** approved by the maintainer 2026-10-14 (D1 system browser, D2 packages/desktop-ui). S1+S2 planned in docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md.
+**Status:** approved by the maintainer 2026-10-14 (D1 system browser, D2 packages/desktop-ui). S1+S2 planned in docs/superpowers/plans/2026-10-14-m6-s1-s2-tauri-shell.md. S3 planned in docs/superpowers/plans/2026-10-15-m6-s3-recorder.md and implemented on feat/m6-s3-recorder; see HANDOFF.md.
 S1+S2 implemented; see HANDOFF.md. The MSVC toolchain + Windows SDK it needs were reinstalled on 2026-10-14.
 **Status of record:** [`HANDOFF.md`](../../../HANDOFF.md) — M6 progress is tracked there, not
 here; update it (and `mindmap.md`'s ledger) whenever a slice below starts, lands or changes
@@ -166,7 +166,6 @@ of failing silently in the UI.
 - **Toolchain.** Tauri needs MSVC, the Windows SDK and the WebView2 runtime (Windows 11 ships
   it). The first two went missing on the dev machine on 2026-10-08 and were reinstalled on
   2026-10-14, so S1+ can now be compiled.
-- **RSS** (ADR-006's stated risk) — mitigated by D1 and D3, measured in M9.
 - **Exe size.** Tauri adds a few MB on top of the engine and the 237 KB publish page, against
   the ≤15 MB budget in AGENTS.md §1. Measure at the end of S1, not at M9.
 - **Tray + `prevent_exit` semantics** in Tauri v2 are the piece most likely to behave

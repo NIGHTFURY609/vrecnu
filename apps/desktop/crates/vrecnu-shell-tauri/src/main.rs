@@ -11,6 +11,7 @@ mod commands;
 #[cfg(test)]
 mod contract_tests;
 mod events;
+mod lifecycle;
 mod services;
 mod tray;
 mod window;
@@ -41,23 +42,38 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let shell = Arc::new(services::TauriShell::new(app.handle().clone()));
-            let session = Arc::new(Session::new(shell));
-            // Subscribe before anything can emit; the UI recovers older state from
+            let session = Arc::new(Session::new(shell.clone()));
+            // Both subscriptions before anything can emit; the UI recovers older state from
             // get_snapshot, not from replayed events.
             let engine_events = RecorderEngine::subscribe(session.as_ref());
+            let tray_events = RecorderEngine::subscribe(session.as_ref());
             events::spawn_pump(
                 engine_events,
                 events::WebviewSink::new(app.handle().clone()),
             )?;
+            let initial = session.snapshot().session;
+            // Managed before the tray exists: its menu handlers read both.
             app.manage(session);
-            tray::build(app.handle())?;
+            app.manage(shell);
+            let record_item = tray::build(app.handle())?;
+            lifecycle::spawn_observer(
+                tray_events,
+                initial,
+                tray::AppTray::new(app.handle().clone(), record_item),
+            )?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::list_sources,
             commands::list_cameras,
-            commands::list_audio_devices
+            commands::list_audio_devices,
+            commands::get_config,
+            commands::configure,
+            commands::start_recording,
+            commands::stop_recording,
+            commands::reset,
+            commands::reveal_recording
         ])
         .build(tauri::generate_context!());
 

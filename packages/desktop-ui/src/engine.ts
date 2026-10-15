@@ -69,6 +69,26 @@ export interface AudioDevices {
   outputs: AudioDevice[];
 }
 
+export interface BubbleSpec {
+  diameter: number;
+  /** A Rust `(i32, i32)`: an array on the wire. */
+  position: [number, number];
+  clickThrough: boolean;
+}
+
+export interface SessionConfig {
+  source: string | null;
+  camera: string | null;
+  microphone: string | null;
+  systemAudio: boolean;
+  fps: number;
+  videoBitrate: number;
+  bubble: BubbleSpec | null;
+}
+
+/** BubbleSpec::default() in vrecnu-types; contract.test.ts pins the two together. */
+export const DEFAULT_BUBBLE: BubbleSpec = { diameter: 240, position: [48, 48], clickThrough: true };
+
 export type EngineEvent =
   | { type: "stateChanged"; from: SessionState; to: SessionState }
   | { type: "elapsed"; ms: number }

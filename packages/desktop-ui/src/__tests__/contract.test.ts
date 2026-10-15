@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../__fixtures__/engine.json";
-import type {
-  AppError,
-  AppState,
-  AudioDevice,
-  AudioDevices,
-  CameraInfo,
-  CaptureSource,
-  CaptureStats,
-  EngineEvent,
-  EngineEventType,
-  Recording,
+import {
+  DEFAULT_BUBBLE,
+  type AppError,
+  type AppState,
+  type AudioDevice,
+  type AudioDevices,
+  type BubbleSpec,
+  type CameraInfo,
+  type CaptureSource,
+  type CaptureStats,
+  type EngineEvent,
+  type EngineEventType,
+  type Recording,
+  type SessionConfig,
 } from "../engine";
 import { initialStore, reduce } from "../state";
 
@@ -20,6 +23,7 @@ const data = fixture as unknown as {
   sources: CaptureSource[];
   cameras: CameraInfo[];
   audioDevices: AudioDevices;
+  sessionConfig: SessionConfig;
 };
 
 const EVENT_KEYS = {
@@ -77,6 +81,19 @@ const SOURCE_KEYS = [
 ] as const satisfies readonly (keyof CaptureSource)[];
 const CAMERA_KEYS = ["id", "name"] as const satisfies readonly (keyof CameraInfo)[];
 const AUDIO_DEVICE_KEYS = ["id", "name", "isDefault"] as const satisfies readonly (keyof AudioDevice)[];
+const SESSION_CONFIG_KEYS = [
+  "source",
+  "camera",
+  "microphone",
+  "systemAudio",
+  "fps",
+  "videoBitrate",
+  "bubble",
+] as const satisfies readonly (keyof SessionConfig)[];
+const BUBBLE_KEYS = ["diameter", "position", "clickThrough"] as const satisfies readonly (keyof BubbleSpec)[];
+
+type MissingConfig = Exclude<keyof SessionConfig, (typeof SESSION_CONFIG_KEYS)[number]>;
+const noConfigFieldUnlisted: [MissingConfig] extends [never] ? true : false = true;
 
 // Compile-time completeness: a field added to the mirror but not listed above fails `pnpm typecheck`.
 type MissingEvent = {
@@ -114,6 +131,18 @@ describe("engine.json contract", () => {
     expect(sorted(Object.keys(data.sources[0] ?? {}))).toEqual(sorted(SOURCE_KEYS));
     expect(sorted(Object.keys(data.cameras[0] ?? {}))).toEqual(sorted(CAMERA_KEYS));
     expect(sorted(Object.keys(data.audioDevices.inputs[0] ?? {}))).toEqual(sorted(AUDIO_DEVICE_KEYS));
+  });
+
+  it("matches the session config the UI sends back through configure", () => {
+    expect(noConfigFieldUnlisted).toBe(true);
+    expect(sorted(Object.keys(data.sessionConfig))).toEqual(sorted(SESSION_CONFIG_KEYS));
+    expect(sorted(Object.keys(data.sessionConfig.bubble ?? {}))).toEqual(sorted(BUBBLE_KEYS));
+    // A Rust tuple: an array on the wire, not {x, y}.
+    expect(data.sessionConfig.bubble?.position).toHaveLength(2);
+  });
+
+  it("DEFAULT_BUBBLE mirrors BubbleSpec::default()", () => {
+    expect(DEFAULT_BUBBLE).toEqual(data.sessionConfig.bubble);
   });
 
   describe("reducer applies each fixture event on top of the snapshot", () => {

@@ -33,7 +33,7 @@ vrecnu/
 │   │                    in a browser, never run against real Drive)
 │   ├── ui/         🟩   shadcn-style component seed (57)
 │   ├── desktop-ui/ 🟨   the Tauri shell's webview UI (M6): engine TS mirror, snapshot-seeded
-│   │                    reducer, diagnostic screen; the only package importing @tauri-apps/*
+│   │                    reducer, Recorder/Recording/Saved/Failed screens (S3); the only package importing @tauri-apps/*
 │   └── web/        🟩   the PWA: record, OPFS streaming, trim, download (3,992)
 │
 └── apps/desktop/        Rust — Phase 2, 12 crates, ~13,600 LOC, 252 tests
@@ -167,7 +167,7 @@ conversion, and now the `RecorderEngine` implementation.
 | **M3** | WASAPI audio | ✅ measured |
 | **M4** | Camera + bubble | ✅ measured |
 | **M5** | Loopback publish server | ✅ **measured** — real process, real socket: page served, `Range` honoured, progress and share link round-tripped, port released. Drive itself still unexercised (the completion POSTs were fake), and the page has never been rendered in a browser against the server. On `main` (PR #5) |
-| **M6** | Shell + UI | 🟨 **in progress.** Design approved 2026-10-14 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`); **S1+S2 done** (tray shell, on-demand window, single instance; TauriShell, read-only IPC, diagnostic screen — 2026-10-15; tray checks passed 2026-10-15); S3–S5 next. Engine side and toolchain both unblocked (2026-10-14) |
+| **M6** | Shell + UI | 🟨 **in progress.** Design approved 2026-10-14 (`docs/superpowers/specs/2026-10-09-m6-tauri-shell-design.md`); **S1+S2 done** (tray shell, on-demand window, single instance; TauriShell, read-only IPC, diagnostic screen — 2026-10-15; tray checks passed 2026-10-15); **S3 done** 2026-10-15 on `feat/m6-s3-recorder`, not merged (recorder screen, tray Start/Stop, engine `start` fix, window sizes; tray-menu clicks and Quit-while-recording still need a manual check); S4–S5 next. Engine side and toolchain both unblocked (2026-10-14) |
 | **M7** | Editing | 🟨 `render_args()` builds and tests the command lines; nothing runs them |
 | **M8** | Packaging, installer, updater | ⬜ **blocked** on a code-signing certificate |
 | **M9** | Budget gates | ⬜ |
