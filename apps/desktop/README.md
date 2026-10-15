@@ -111,7 +111,7 @@ crates/
 
 ## Status
 
-**M0–M5 complete, all on `main`; M6 S1+S2 (tray shell, TauriShell, read-only IPC, diagnostic screen) done on `feat/m6-tauri-shell`; tray click/menu checks pending.** On 2026-10-15, `cargo test --workspace` passed **252 tests**
+**M0–M5 complete, all on `main`; M6 S1+S2 (tray shell, TauriShell, read-only IPC, diagnostic screen) done on `feat/m6-tauri-shell`; tray checks passed 2026-10-15.** On 2026-10-15, `cargo test --workspace` passed **252 tests**
 across 12 crates, and `clippy -D warnings`, `fmt --check` and the shell-boundary gate (including
 its link-time proof) were clean. The project's status of record is [`HANDOFF.md`](../../HANDOFF.md);
 this section summarises it.
@@ -134,7 +134,7 @@ engine snapshot and device summary (S2 diagnostic screen).
 | M3 | WASAPI loopback and microphone capture. | done, measured |
 | M4 | Camera device and the bubble, integrated. | done, measured |
 | M5 | The loopback publish server. | done; on `main` (PR #5) |
-| M6 | The Tauri shell and recorder UI. | in progress — S1+S2 done (tray click/menu checks pending), S3–S5 next |
+| M6 | The Tauri shell and recorder UI. | in progress — S1+S2 done (tray checks passed 2026-10-15), S3–S5 next |
 | M7 | Editing (trim / export). | partial — `render_args` is built and tested, nothing calls it |
 | M8 | Installer and auto-update. | blocked on a code-signing certificate |
 | M9 | Budget gates. | not started |
